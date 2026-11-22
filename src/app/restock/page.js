@@ -5,10 +5,12 @@ import { getApprovedSuppliers, getProducts } from '@/app/actions/master';
 import AppShell from '@/components/AppShell';
 import RestockClient from './RestockClient';
 
-export default async function RestockPage() {
+export default async function RestockPage({ searchParams }) {
   const session = await getSession();
   if (!session) redirect('/login');
   if (session.role === 'staff_gudang') redirect('/dashboard');
+  const params = await searchParams;
+  const suggestedProductId = params?.productId || '';
 
   const [orders, suppliers, products] = await Promise.all([
     getRestockOrders(),
@@ -23,6 +25,7 @@ export default async function RestockPage() {
         orders={orders}
         suppliers={suppliers}
         products={products}
+        suggestedProductId={suggestedProductId}
       />
     </AppShell>
   );

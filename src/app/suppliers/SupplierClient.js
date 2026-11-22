@@ -13,53 +13,51 @@ export default function SupplierClient({ suppliers }) {
 
   return (
     <div className="space-y-6">
-      <div className="border-b-2 border-[#2c3036] pb-4">
-        <span className="text-[11px] font-mono uppercase tracking-[0.2em] text-[#d49b27]">
-          SECURITY CLEARANCE // ADMIN ONLY
-        </span>
-        <h1 className="text-2xl font-black uppercase tracking-wide text-[#e8e6e1] mt-1">
-          VERIFIKASI MITRA SUPPLIER
-        </h1>
+      <div>
+        <h1 className="text-2xl font-bold text-slate-800">Verifikasi Mitra Supplier</h1>
+        <p className="text-sm text-slate-500 mt-1">
+          Setujui atau tolak pendaftaran akun Supplier baru sebelum mereka dapat mengakses sistem
+        </p>
       </div>
 
       {msg && (
-        <div className="p-3 bg-[#1b222c] border-l-4 border-[#d49b27] text-[#f3d078] text-xs font-mono">
+        <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-sm">
           {msg}
         </div>
       )}
 
-      <div className="bg-[#141619] border-2 border-[#2c3036] overflow-x-auto">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
         <table className="w-full text-sm text-left">
-          <thead className="bg-[#1b1e22] text-[#9a9d9e] font-mono text-xs uppercase border-b-2 border-[#2c3036]">
+          <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
             <tr>
-              <th className="p-3.5">PERUSAHAAN</th>
-              <th className="p-3.5">PIC</th>
-              <th className="p-3.5">EMAIL</th>
-              <th className="p-3.5">STATUS</th>
-              <th className="p-3.5 text-right">AKSI</th>
+              <th className="p-3.5">Perusahaan</th>
+              <th className="p-3.5">Nama PIC</th>
+              <th className="p-3.5">Email</th>
+              <th className="p-3.5">Status</th>
+              <th className="p-3.5 text-right">Aksi</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#2c3036]">
+          <tbody className="divide-y divide-slate-100">
             {suppliers.length === 0 ? (
               <tr>
-                <td colSpan={5} className="p-6 text-center font-mono text-xs text-[#7c7f85]">
-                  NO SUPPLIER RECORDS FOUND.
+                <td colSpan={5} className="p-6 text-center text-slate-500">
+                  Belum ada Supplier yang mendaftar.
                 </td>
               </tr>
             ) : (
               suppliers.map((s) => (
-                <tr key={s.id} className="hover:bg-[#191c20]">
-                  <td className="p-3.5 font-bold uppercase text-[#e8e6e1]">{s.company_name || '-'}</td>
-                  <td className="p-3.5 text-[#d6d3cd]">{s.username}</td>
-                  <td className="p-3.5 font-mono text-xs text-[#8b8e94]">{s.email}</td>
+                <tr key={s.id}>
+                  <td className="p-3.5 font-semibold text-slate-800">{s.company_name || '-'}</td>
+                  <td className="p-3.5 text-slate-700">{s.username}</td>
+                  <td className="p-3.5 text-slate-600">{s.email}</td>
                   <td className="p-3.5">
                     <span
-                      className={`px-2.5 py-0.5 font-mono text-[11px] font-bold uppercase border ${
+                      className={`px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${
                         s.status === 'approved'
-                          ? 'bg-[#1e2b18] text-[#a3e635] border-[#6c804b]'
+                          ? 'bg-emerald-100 text-emerald-700'
                           : s.status === 'rejected'
-                          ? 'bg-[#451416] text-[#fca5a5] border-[#dc2626]'
-                          : 'bg-[#3b290e] text-[#facc15] border-[#d49b27]'
+                          ? 'bg-red-100 text-red-700'
+                          : 'bg-amber-100 text-amber-800'
                       }`}
                     >
                       {s.status}
@@ -69,17 +67,17 @@ export default function SupplierClient({ suppliers }) {
                     {s.status !== 'approved' && (
                       <button
                         onClick={() => handleAction(s.id, 'approved')}
-                        className="px-3 py-1 bg-[#4d6332] hover:bg-[#5e783d] text-[#e8e6e1] font-mono text-xs font-bold uppercase"
+                        className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-semibold"
                       >
-                        APPROVE
+                        Approve
                       </button>
                     )}
                     {s.status !== 'rejected' && (
                       <button
                         onClick={() => handleAction(s.id, 'rejected')}
-                        className="px-3 py-1 bg-[#7f1d1d] hover:bg-[#991b1b] text-[#fca5a5] font-mono text-xs font-bold uppercase"
+                        className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-semibold"
                       >
-                        REJECT
+                        Reject
                       </button>
                     )}
                   </td>

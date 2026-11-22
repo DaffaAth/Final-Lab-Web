@@ -1,8 +1,12 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { getProducts, getCategories } from '@/app/actions/master';
+import { getPaginatedProducts, getCategories } from '@/app/actions/master';
 import AppShell from '@/components/AppShell';
 import ProductClient from './ProductClient';
+
+function queryValue(value, fallback = '') {
+  return typeof value === 'string' ? value : fallback;
+}
 
 export default async function ProductsPage({ searchParams }) {
   const session = await getSession();
@@ -11,14 +15,15 @@ export default async function ProductsPage({ searchParams }) {
 
   const sp = await searchParams;
   const filters = {
-    search: sp?.search || '',
-    categoryId: sp?.categoryId || '',
-    stockStatus: sp?.stockStatus || '',
-    sortBy: sp?.sortBy || 'created_at',
+    search: queryValue(sp?.search),
+    categoryId: queryValue(sp?.categoryId),
+    stockStatus: queryValue(sp?.stockStatus),
+    sortBy: queryValue(sp?.sortBy, 'created_at'),
+    page: queryValue(sp?.page, '1'),
   };
 
-  const [products, categories] = await Promise.all([
-    getProducts(filters),
+  const [productResult, categories] = await Promise.all([
+    getPaginatedProducts(filters),
     getCategories(),
   ]);
 
@@ -26,9 +31,10 @@ export default async function ProductsPage({ searchParams }) {
     <AppShell session={session}>
       <ProductClient
         session={session}
-        products={products}
+        products={productResult.products}
         categories={categories}
         filters={filters}
+        pagination={productResult}
       />
     </AppShell>
   );
