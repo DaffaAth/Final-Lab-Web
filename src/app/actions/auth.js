@@ -9,7 +9,7 @@ export async function loginAction(prevState, formData) {
   const password = formData.get('password');
 
   if (!email || !password) {
-    return { error: 'ACCESS DENIED: Email dan password wajib diisi.' };
+    return { error: 'Email dan password wajib diisi.' };
   }
 
   let user;
@@ -19,20 +19,20 @@ export async function loginAction(prevState, formData) {
       [email]
     );
     user = res.rows[0];
-  } catch {
-    return { error: 'SYSTEM OFFLINE: Gagal terhubung ke database PostgreSQL. Cek .env.local.' };
+  } catch (err) {
+    return { error: 'Gagal terhubung ke database PostgreSQL. Pastikan DATABASE_URL di .env.local benar.' };
   }
 
   if (!user || user.password !== password) {
-    return { error: 'INVALID CREDENTIALS: Email atau password salah.' };
+    return { error: 'Email atau password salah.' };
   }
 
   if (user.role === 'supplier') {
     if (user.status === 'pending') {
-      return { error: 'CLEARANCE PENDING: Akun Supplier Anda sedang ditinjau oleh Admin.' };
+      return { error: 'Akun Supplier Anda berstatus Pending dan sedang ditinjau oleh Admin.' };
     }
     if (user.status === 'rejected') {
-      return { error: 'CLEARANCE REVOKED: Pendaftaran akun Supplier Anda ditolak oleh Admin.' };
+      return { error: 'Pendaftaran akun Supplier Anda telah ditolak oleh Admin.' };
     }
   }
 
@@ -47,13 +47,13 @@ export async function registerSupplierAction(prevState, formData) {
   const password = formData.get('password');
 
   if (!username || !company_name || !email || !password) {
-    return { error: 'INCOMPLETE DOSSIER: Semua field wajib diisi.' };
+    return { error: 'Semua field wajib diisi.' };
   }
 
   try {
     const dup = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
     if (dup.rows.length > 0) {
-      return { error: 'DUPLICATE RECORD: Email sudah terdaftar.' };
+      return { error: 'Email sudah terdaftar.' };
     }
 
     await pool.query(
@@ -62,10 +62,10 @@ export async function registerSupplierAction(prevState, formData) {
       [username, company_name, email, password]
     );
     return {
-      success: 'DOSSIER SUBMITTED: Registrasi berhasil! Status akun Pending, menunggu persetujuan Admin.',
+      success: 'Registrasi berhasil! Akun Anda berstatus Pending dan menunggu persetujuan Admin sebelum dapat login.',
     };
   } catch {
-    return { error: 'SYSTEM ERROR: Gagal memproses pendaftaran Supplier.' };
+    return { error: 'Gagal memproses pendaftaran Supplier.' };
   }
 }
 

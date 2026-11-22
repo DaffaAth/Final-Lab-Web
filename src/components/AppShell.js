@@ -69,7 +69,7 @@ export default function AppShell({ session, children }) {
       <aside
         className={`${
           mobileOpen ? 'block' : 'hidden'
-        } md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 bg-[#121417] border-r-2 border-[#2c3036] z-20`}
+        } fixed left-0 right-0 top-[56px] bottom-0 flex flex-col bg-[#121417] border-r-2 border-[#2c3036] z-20 md:flex md:w-64 md:top-0 md:bottom-auto md:fixed md:inset-y-0`}
       >
         <div className="p-5 border-b-2 border-[#2c3036] bg-[#16191d]">
           <div className="flex items-center justify-between">

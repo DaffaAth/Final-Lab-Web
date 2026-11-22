@@ -1,8 +1,27 @@
 'use server';
 
+import { randomUUID } from 'node:crypto';
 import pool from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { revalidatePath } from 'next/cache';
+
+function normalizeItems(items) {
+  if (!Array.isArray(items) || items.length === 0) return null;
+  const quantities = new Map();
+  for (const item of items) {
+    const productId = Number(item?.product_id);
+    const quantity = Number(item?.quantity);
+    if (!Number.isInteger(productId) || productId <= 0 || !Number.isInteger(quantity) || quantity <= 0) {
+      return null;
+    }
+    const total = (quantities.get(productId) || 0) + quantity;
+    if (!Number.isSafeInteger(total)) return null;
+    quantities.set(productId, total);
+  }
+  return [...quantities]
+    .sort(([firstId], [secondId]) => firstId - secondId)
+    .map(([product_id, quantity]) => ({ product_id, quantity }));
+}
 
 // ==================== RESTOCK ORDERS / PO ====================
 export async function getRestockOrders() {
@@ -43,6 +62,10 @@ export async function getRestockOrders() {
 }
 
 export async function getAvailableReceivedPOs() {
+  const session = await getSession();
+  if (!session || session.role !== 'staff_gudang') return [];
+
+  // PO berstatus Received yang belum dipakai transaksi Incoming aktif (selain Rejected)
   const res = await pool.query(`
     SELECT ro.id, ro.po_number, ro.supplier_id, s.company_name AS supplier_company, s.username AS supplier_name,
       COALESCE(
@@ -72,7 +95,7 @@ export async function getAvailableReceivedPOs() {
 export async function createRestockOrderAction(prevState, formData) {
   const session = await getSession();
   if (!session || session.role !== 'warehouse_manager') {
-    return { error: 'ACCESS DENIED: Hanya Warehouse Manager yang dapat membuat Restock Order.' };
+    return { error: 'Hanya Warehouse Manager yang dapat membuat Restock Order.' };
   }
 
   const supplier_id = Number(formData.get('supplier_id'));
@@ -88,29 +111,45 @@ export async function createRestockOrderAction(prevState, formData) {
     items = [];
   }
 
-  if (!supplier_id || !order_date || !expected_delivery_date || items.length === 0) {
-    return { error: 'INCOMPLETE PO: Supplier, tanggal, dan minimal 1 produk wajib diisi.' };
+  items = normalizeItems(items);
+  if (
+    !Number.isInteger(supplier_id) ||
+    supplier_id <= 0 ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(order_date || '') ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(expected_delivery_date || '') ||
+    !notes ||
+    !items
+  ) {
+    return { error: 'Supplier, tanggal, catatan, dan minimal 1 produk wajib diisi.' };
   }
   if (expected_delivery_date < order_date) {
-    return { error: 'DATE ERROR: Tanggal perkiraan tiba tidak boleh sebelum tanggal order.' };
-  }
-  for (const item of items) {
-    if (!item.product_id || Number(item.quantity) <= 0) {
-      return { error: 'QUANTITY ERROR: Setiap produk wajib memiliki quantity > 0.' };
-    }
+    return { error: 'Tanggal perkiraan tiba tidak boleh sebelum tanggal order.' };
   }
 
-  const poNumber = `PO-${Date.now().toString().slice(-6)}`;
   const client = await pool.connect();
 
   try {
     await client.query('BEGIN');
-    const poRes = await client.query(
-      `INSERT INTO restock_orders (po_number, supplier_id, created_by, order_date, expected_delivery_date, notes, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'Pending') RETURNING id`,
-      [poNumber, supplier_id, session.id, order_date, expected_delivery_date, notes]
+    const supplierResult = await client.query(
+      `SELECT id FROM users WHERE id = $1 AND role = 'supplier' AND status = 'approved'`,
+      [supplier_id]
     );
-    const poId = poRes.rows[0].id;
+    if (supplierResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return { error: 'Supplier tidak ditemukan atau belum disetujui.' };
+    }
+
+    const idResult = await client.query(
+      `SELECT nextval(pg_get_serial_sequence('restock_orders', 'id')) AS id`
+    );
+    const poId = Number(idResult.rows[0].id);
+    const poNumber = `PO-${String(poId).padStart(6, '0')}`;
+
+    await client.query(
+      `INSERT INTO restock_orders (id, po_number, supplier_id, created_by, order_date, expected_delivery_date, notes, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'Pending')`,
+      [poId, poNumber, supplier_id, session.id, order_date, expected_delivery_date, notes]
+    );
 
     for (const item of items) {
       await client.query(
@@ -122,10 +161,11 @@ export async function createRestockOrderAction(prevState, formData) {
     await client.query('COMMIT');
     revalidatePath('/restock');
     revalidatePath('/dashboard');
-    return { success: `DISPATCHED: Restock Order ${poNumber} berhasil dibuat.` };
-  } catch {
+    return { success: `Restock Order ${poNumber} berhasil dibuat.` };
+  } catch (error) {
     await client.query('ROLLBACK');
-    return { error: 'SYSTEM ERROR: Gagal membuat Restock Order.' };
+    console.error('Gagal membuat Restock Order:', error);
+    return { error: 'Gagal membuat Restock Order.' };
   } finally {
     client.release();
   }
@@ -133,18 +173,22 @@ export async function createRestockOrderAction(prevState, formData) {
 
 export async function updateRestockStatusAction(orderId, newStatus, statusNotes = '') {
   const session = await getSession();
-  if (!session) return { error: 'SESSION EXPIRED.' };
+  if (!session) return { error: 'Sesi habis.' };
+  const id = Number(orderId);
+  if (!Number.isInteger(id) || id <= 0) return { error: 'Restock Order tidak valid.' };
+  const note = typeof statusNotes === 'string' ? statusNotes.trim() : '';
 
-  const orderRes = await pool.query('SELECT * FROM restock_orders WHERE id = $1', [orderId]);
+  const orderRes = await pool.query('SELECT * FROM restock_orders WHERE id = $1', [id]);
   const order = orderRes.rows[0];
-  if (!order) return { error: 'PO NOT FOUND.' };
+  if (!order) return { error: 'Restock Order tidak ditemukan.' };
 
+  // Validasi hak akses & transisi status
   if (session.role === 'supplier') {
-    if (order.supplier_id !== session.id) return { error: 'ACCESS DENIED.' };
-    if (order.status !== 'Pending') return { error: 'PO sudah diproses sebelumnya.' };
-    if (!['Confirmed', 'Rejected'].includes(newStatus)) return { error: 'Status tidak valid.' };
-    if (newStatus === 'Rejected' && !statusNotes.trim()) {
-      return { error: 'REASON REQUIRED: Catatan penolakan wajib diisi.' };
+    if (order.supplier_id !== session.id) return { error: 'Akses ditolak.' };
+    if (order.status !== 'Pending') return { error: 'PO ini sudah diproses sebelumnya.' };
+    if (!['Confirmed', 'Rejected'].includes(newStatus)) return { error: 'Status tidak valid untuk Supplier.' };
+    if (newStatus === 'Rejected' && !note) {
+      return { error: 'Catatan penolakan wajib diisi.' };
     }
   } else if (session.role === 'warehouse_manager') {
     const validTransitions = {
@@ -155,22 +199,60 @@ export async function updateRestockStatusAction(orderId, newStatus, statusNotes 
       return { error: `Perubahan status dari ${order.status} ke ${newStatus} tidak diizinkan.` };
     }
   } else {
-    return { error: 'ACCESS DENIED.' };
+    return { error: 'Anda tidak memiliki hak mengubah status PO.' };
   }
 
-  await pool.query(
-    `UPDATE restock_orders SET status = $1, status_notes = COALESCE(NULLIF($2, ''), status_notes) WHERE id = $3`,
-    [newStatus, statusNotes.trim(), orderId]
+  const updateResult = await pool.query(
+    `UPDATE restock_orders
+     SET status = $1, status_notes = COALESCE(NULLIF($2, ''), status_notes)
+     WHERE id = $3 AND status = $4`,
+    [newStatus, note, id, order.status]
   );
+  if (updateResult.rowCount === 0) return { error: 'Status PO sudah berubah. Muat ulang halaman dan coba lagi.' };
 
   revalidatePath('/restock');
   revalidatePath('/transactions');
   revalidatePath('/dashboard');
-  return { success: `PO ${order.po_number} -> Status diperbarui menjadi ${newStatus.toUpperCase()}.` };
+  return { success: `Status PO ${order.po_number} diperbarui menjadi ${newStatus}.` };
 }
 
 // ==================== TRANSACTIONS (INCOMING & OUTGOING) ====================
-export async function getTransactions() {
+export async function getTransactions(filters = {}) {
+  const session = await getSession();
+  if (!session || !['admin', 'warehouse_manager', 'staff_gudang'].includes(session.role)) return [];
+
+  const clauses = [];
+  const values = [];
+  if (['incoming', 'outgoing'].includes(filters.type)) {
+    values.push(filters.type);
+    clauses.push(`t.type = $${values.length}`);
+  }
+  if (['Pending', 'Approved', 'Rejected', 'Shipped'].includes(filters.status)) {
+    values.push(filters.status);
+    clauses.push(`t.status = $${values.length}`);
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(filters.dateFrom || '')) {
+    values.push(filters.dateFrom);
+    clauses.push(`t.transaction_date >= $${values.length}::date`);
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(filters.dateTo || '')) {
+    values.push(filters.dateTo);
+    clauses.push(`t.transaction_date <= $${values.length}::date`);
+  }
+  if (filters.party?.trim()) {
+    values.push(`%${filters.party.trim()}%`);
+    clauses.push(
+      `(s.company_name ILIKE $${values.length} OR s.username ILIKE $${values.length} OR t.customer_name ILIKE $${values.length})`
+    );
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  const orderBy =
+    filters.sortBy === 'date_asc'
+      ? 't.transaction_date ASC, t.id ASC'
+      : filters.sortBy === 'created_desc'
+        ? 't.created_at DESC, t.id DESC'
+        : 't.transaction_date DESC, t.id DESC';
+
   const res = await pool.query(`
     SELECT t.*,
       ro.po_number,
@@ -194,21 +276,23 @@ export async function getTransactions() {
     LEFT JOIN restock_orders ro ON ro.id = t.restock_order_id
     LEFT JOIN users s ON s.id = t.supplier_id
     JOIN users u ON u.id = t.created_by
-    ORDER BY t.created_at DESC
-  `);
+    ${where}
+    ORDER BY ${orderBy}
+  `, values);
   return res.rows;
 }
 
 export async function createTransactionAction(prevState, formData) {
   const session = await getSession();
   if (!session || session.role !== 'staff_gudang') {
-    return { error: 'ACCESS DENIED: Hanya Staff Gudang yang dapat mencatat transaksi baru.' };
+    return { error: 'Hanya Staff Gudang yang dapat mencatat transaksi baru.' };
   }
 
   const type = formData.get('type');
   const transaction_date = formData.get('transaction_date');
-  const restock_order_id = formData.get('restock_order_id') ? Number(formData.get('restock_order_id')) : null;
-  const supplier_id = formData.get('supplier_id') ? Number(formData.get('supplier_id')) : null;
+  const restockOrderValue = formData.get('restock_order_id');
+  const restock_order_id = restockOrderValue ? Number(restockOrderValue) : null;
+  let supplier_id = formData.get('supplier_id') ? Number(formData.get('supplier_id')) : null;
   const customer_name = formData.get('customer_name')?.trim() || null;
   const notes = formData.get('notes')?.trim() || '';
   const itemsRaw = formData.get('items_json');
@@ -219,21 +303,25 @@ export async function createTransactionAction(prevState, formData) {
   } catch {
     items = [];
   }
+  items = normalizeItems(items);
 
-  if (!['incoming', 'outgoing'].includes(type) || !transaction_date || items.length === 0) {
-    return { error: 'INCOMPLETE LOG: Jenis transaksi, tanggal, dan minimal 1 produk wajib diisi.' };
+  if (
+    !['incoming', 'outgoing'].includes(type) ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(transaction_date || '') ||
+    !notes ||
+    !items ||
+    (restock_order_id !== null && (!Number.isInteger(restock_order_id) || restock_order_id <= 0))
+  ) {
+    return { error: 'Jenis transaksi, tanggal, catatan, dan minimal 1 produk wajib diisi.' };
   }
-  if (type === 'incoming' && !supplier_id) {
-    return { error: 'SUPPLIER REQUIRED: Supplier wajib dipilih untuk transaksi Barang Masuk.' };
+  if (type === 'outgoing' && restock_order_id) {
+    return { error: 'Restock Order hanya dapat dipakai untuk transaksi Barang Masuk.' };
+  }
+  if (type === 'incoming' && !restock_order_id && (!Number.isInteger(supplier_id) || supplier_id <= 0)) {
+    return { error: 'Supplier wajib dipilih untuk transaksi Barang Masuk.' };
   }
   if (type === 'outgoing' && !customer_name) {
-    return { error: 'DESTINATION REQUIRED: Nama customer/tujuan wajib diisi untuk Barang Keluar.' };
-  }
-
-  for (const item of items) {
-    if (!item.product_id || Number(item.quantity) <= 0) {
-      return { error: 'QUANTITY ERROR: Quantity setiap produk harus > 0.' };
-    }
+    return { error: 'Nama customer/tujuan wajib diisi untuk transaksi Barang Keluar.' };
   }
 
   const client = await pool.connect();
@@ -241,29 +329,62 @@ export async function createTransactionAction(prevState, formData) {
     await client.query('BEGIN');
 
     if (type === 'incoming' && restock_order_id) {
-      const poCheck = await client.query(
-        `SELECT id FROM transactions WHERE restock_order_id = $1 AND status != 'Rejected'`,
+      const poResult = await client.query(
+        `SELECT id, supplier_id, status
+         FROM restock_orders
+         WHERE id = $1
+         FOR UPDATE`,
         [restock_order_id]
       );
-      if (poCheck.rows.length > 0) {
+      const order = poResult.rows[0];
+      if (!order || order.status !== 'Received') {
         await client.query('ROLLBACK');
-        return { error: 'DUPLICATE PO: Restock Order ini sudah dipakai pada transaksi aktif lain.' };
+        return { error: 'Restock Order harus berstatus Received.' };
+      }
+
+      const usedOrder = await client.query(
+        `SELECT id
+         FROM transactions
+         WHERE restock_order_id = $1 AND status != 'Rejected'
+         LIMIT 1`,
+        [restock_order_id]
+      );
+      if (usedOrder.rows.length > 0) {
+        await client.query('ROLLBACK');
+        return { error: 'Restock Order ini sudah dipakai pada transaksi aktif lain.' };
+      }
+      supplier_id = order.supplier_id;
+    }
+
+    if (type === 'incoming') {
+      const supplierResult = await client.query(
+        `SELECT id
+         FROM users
+         WHERE id = $1 AND role = 'supplier' AND status = 'approved'`,
+        [supplier_id]
+      );
+      if (supplierResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return { error: 'Supplier tidak ditemukan atau belum disetujui.' };
       }
     }
 
     if (type === 'outgoing') {
       for (const item of items) {
-        const prodRes = await client.query('SELECT name, current_stock FROM products WHERE id = $1', [Number(item.product_id)]);
+        const prodRes = await client.query(
+          'SELECT name, current_stock FROM products WHERE id = $1 FOR UPDATE',
+          [item.product_id]
+        );
         const prod = prodRes.rows[0];
-        if (!prod || Number(item.quantity) > prod.current_stock) {
+        if (!prod || item.quantity > Number(prod.current_stock)) {
           await client.query('ROLLBACK');
-          return { error: `INSUFFICIENT STOCK: "${prod?.name || 'Produk'}" tidak mencukupi (tersedia: ${prod?.current_stock ?? 0}).` };
+          return { error: `Stok "${prod?.name || 'Produk'}" tidak mencukupi (tersedia: ${prod?.current_stock ?? 0}).` };
         }
       }
     }
 
     const prefix = type === 'incoming' ? 'TRX-IN' : 'TRX-OUT';
-    const trxNumber = `${prefix}-${Date.now().toString().slice(-6)}`;
+    const trxNumber = `${prefix}-${randomUUID()}`;
 
     const trxRes = await client.query(
       `INSERT INTO transactions (transaction_number, type, transaction_date, restock_order_id, supplier_id, customer_name, created_by, notes, status)
@@ -282,10 +403,11 @@ export async function createTransactionAction(prevState, formData) {
     await client.query('COMMIT');
     revalidatePath('/transactions');
     revalidatePath('/dashboard');
-    return { success: `LOGGED: Transaksi ${trxNumber} berhasil dicatat (Menunggu approval Manager).` };
-  } catch {
+    return { success: `Transaksi ${trxNumber} berhasil dicatat dan menunggu persetujuan Manager.` };
+  } catch (error) {
     await client.query('ROLLBACK');
-    return { error: 'SYSTEM ERROR: Gagal menyimpan transaksi.' };
+    console.error('Gagal menyimpan transaksi:', error);
+    return { error: 'Gagal menyimpan transaksi.' };
   } finally {
     client.release();
   }
@@ -294,55 +416,56 @@ export async function createTransactionAction(prevState, formData) {
 export async function editPendingTransactionAction(transactionId, notes, items) {
   const session = await getSession();
   if (!session || session.role !== 'staff_gudang') {
-    return { error: 'ACCESS DENIED.' };
+    return { error: 'Akses ditolak.' };
   }
-
-  if (!items || items.length === 0) {
-    return { error: 'Minimal 1 produk wajib diisi.' };
-  }
+  const id = Number(transactionId);
+  items = normalizeItems(items);
+  if (!Number.isInteger(id) || id <= 0) return { error: 'Transaksi tidak valid.' };
+  if (!items) return { error: 'Minimal 1 produk dengan quantity bilangan bulat lebih dari 0 wajib diisi.' };
+  const updatedNotes = typeof notes === 'string' ? notes.trim() : '';
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const trxRes = await client.query('SELECT * FROM transactions WHERE id = $1 FOR UPDATE', [transactionId]);
+    const trxRes = await client.query('SELECT * FROM transactions WHERE id = $1 FOR UPDATE', [id]);
     const trx = trxRes.rows[0];
 
     if (!trx || trx.status !== 'Pending') {
       await client.query('ROLLBACK');
-      return { error: 'LOCKED: Hanya transaksi berstatus Pending yang dapat diedit.' };
+      return { error: 'Hanya transaksi berstatus Pending yang dapat diedit.' };
     }
 
     if (trx.type === 'outgoing') {
       for (const item of items) {
-        const prodRes = await client.query('SELECT name, current_stock FROM products WHERE id = $1', [Number(item.product_id)]);
+        const prodRes = await client.query(
+          'SELECT name, current_stock FROM products WHERE id = $1 FOR UPDATE',
+          [item.product_id]
+        );
         const prod = prodRes.rows[0];
-        if (!prod || Number(item.quantity) > prod.current_stock) {
+        if (!prod || item.quantity > Number(prod.current_stock)) {
           await client.query('ROLLBACK');
-          return { error: `INSUFFICIENT STOCK: "${prod?.name}" tidak mencukupi (tersedia: ${prod?.current_stock ?? 0}).` };
+          return { error: `Stok "${prod?.name}" tidak mencukupi (tersedia: ${prod?.current_stock ?? 0}).` };
         }
       }
     }
 
-    await client.query('UPDATE transactions SET notes = $1 WHERE id = $2', [notes || '', transactionId]);
-    await client.query('DELETE FROM transaction_items WHERE transaction_id = $1', [transactionId]);
+    await client.query('UPDATE transactions SET notes = $1 WHERE id = $2', [updatedNotes, id]);
+    await client.query('DELETE FROM transaction_items WHERE transaction_id = $1', [id]);
 
     for (const item of items) {
-      if (Number(item.quantity) <= 0) {
-        await client.query('ROLLBACK');
-        return { error: 'Quantity harus > 0.' };
-      }
       await client.query(
         'INSERT INTO transaction_items (transaction_id, product_id, quantity) VALUES ($1, $2, $3)',
-        [transactionId, Number(item.product_id), Number(item.quantity)]
+        [id, item.product_id, item.quantity]
       );
     }
 
     await client.query('COMMIT');
     revalidatePath('/transactions');
-    return { success: 'UPDATED: Transaksi Pending berhasil diperbarui.' };
-  } catch {
+    return { success: 'Transaksi Pending berhasil diperbarui.' };
+  } catch (error) {
     await client.query('ROLLBACK');
-    return { error: 'SYSTEM ERROR: Gagal mengedit transaksi.' };
+    console.error('Gagal mengedit transaksi:', error);
+    return { error: 'Gagal mengedit transaksi.' };
   } finally {
     client.release();
   }
@@ -351,39 +474,64 @@ export async function editPendingTransactionAction(transactionId, notes, items) 
 export async function deletePendingTransactionAction(transactionId) {
   const session = await getSession();
   if (!session || session.role !== 'staff_gudang') {
-    return { error: 'ACCESS DENIED.' };
+    return { error: 'Akses ditolak.' };
   }
+  const id = Number(transactionId);
+  if (!Number.isInteger(id) || id <= 0) return { error: 'Transaksi tidak valid.' };
 
-  const trxRes = await pool.query('SELECT * FROM transactions WHERE id = $1', [transactionId]);
-  const trx = trxRes.rows[0];
-  if (!trx) return { error: 'Transaksi tidak ditemukan.' };
-  if (trx.status !== 'Pending') return { error: 'LOCKED: Hanya transaksi berstatus Pending yang dapat dihapus.' };
-  if (trx.created_by !== session.id) return { error: 'Staff hanya dapat menghapus transaksi yang dibuatnya sendiri.' };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const trxRes = await client.query('SELECT * FROM transactions WHERE id = $1 FOR UPDATE', [id]);
+    const trx = trxRes.rows[0];
+    if (!trx) {
+      await client.query('ROLLBACK');
+      return { error: 'Transaksi tidak ditemukan.' };
+    }
+    if (trx.status !== 'Pending') {
+      await client.query('ROLLBACK');
+      return { error: 'Hanya transaksi berstatus Pending yang dapat dihapus.' };
+    }
+    if (trx.created_by !== session.id) {
+      await client.query('ROLLBACK');
+      return { error: 'Staff hanya dapat menghapus transaksi yang dibuatnya sendiri.' };
+    }
 
-  await pool.query('DELETE FROM transactions WHERE id = $1', [transactionId]);
-  revalidatePath('/transactions');
-  revalidatePath('/dashboard');
-  return { success: `PURGED: Transaksi ${trx.transaction_number} berhasil dihapus.` };
+    await client.query('DELETE FROM transactions WHERE id = $1', [id]);
+    await client.query('COMMIT');
+    revalidatePath('/transactions');
+    revalidatePath('/dashboard');
+    return { success: `Transaksi ${trx.transaction_number} berhasil dihapus.` };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Gagal menghapus transaksi:', error);
+    return { error: 'Gagal menghapus transaksi.' };
+  } finally {
+    client.release();
+  }
 }
 
 export async function reviewTransactionAction(transactionId, decision, rejectReason = '') {
   const session = await getSession();
   if (!session || session.role !== 'warehouse_manager') {
-    return { error: 'ACCESS DENIED: Hanya Warehouse Manager yang dapat menyetujui/menolak transaksi.' };
+    return { error: 'Hanya Warehouse Manager yang dapat menyetujui/menolak transaksi.' };
   }
+  const id = Number(transactionId);
+  const reason = typeof rejectReason === 'string' ? rejectReason.trim() : '';
+  if (!Number.isInteger(id) || id <= 0) return { error: 'Transaksi tidak valid.' };
 
   if (!['Approved', 'Rejected'].includes(decision)) {
     return { error: 'Keputusan tidak valid.' };
   }
-  if (decision === 'Rejected' && !rejectReason.trim()) {
-    return { error: 'REASON REQUIRED: Alasan penolakan wajib diisi.' };
+  if (decision === 'Rejected' && !reason) {
+    return { error: 'Alasan penolakan wajib diisi.' };
   }
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const trxRes = await client.query('SELECT * FROM transactions WHERE id = $1 FOR UPDATE', [transactionId]);
+    const trxRes = await client.query('SELECT * FROM transactions WHERE id = $1 FOR UPDATE', [id]);
     const trx = trxRes.rows[0];
     if (!trx || trx.status !== 'Pending') {
       await client.query('ROLLBACK');
@@ -392,9 +540,13 @@ export async function reviewTransactionAction(transactionId, decision, rejectRea
 
     if (decision === 'Approved') {
       const itemsRes = await client.query(
-        'SELECT product_id, quantity FROM transaction_items WHERE transaction_id = $1',
-        [transactionId]
+        'SELECT product_id, quantity FROM transaction_items WHERE transaction_id = $1 ORDER BY product_id ASC',
+        [id]
       );
+      if (itemsRes.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return { error: 'Transaksi tidak memiliki produk.' };
+      }
 
       for (const item of itemsRes.rows) {
         if (trx.type === 'incoming') {
@@ -410,7 +562,7 @@ export async function reviewTransactionAction(transactionId, decision, rejectRea
           const prod = prodRes.rows[0];
           if (!prod || prod.current_stock < item.quantity) {
             await client.query('ROLLBACK');
-            return { error: `INSUFFICIENT STOCK: Gagal Approve "${prod?.name}".` };
+            return { error: `Gagal Approve: stok "${prod?.name}" tidak mencukupi.` };
           }
           await client.query(
             'UPDATE products SET current_stock = current_stock - $1 WHERE id = $2',
@@ -419,11 +571,11 @@ export async function reviewTransactionAction(transactionId, decision, rejectRea
         }
       }
 
-      await client.query(`UPDATE transactions SET status = 'Approved' WHERE id = $1`, [transactionId]);
+      await client.query(`UPDATE transactions SET status = 'Approved' WHERE id = $1`, [id]);
     } else {
       await client.query(
         `UPDATE transactions SET status = 'Rejected', reject_reason = $1 WHERE id = $2`,
-        [rejectReason.trim(), transactionId]
+        [reason, id]
       );
     }
 
@@ -434,12 +586,13 @@ export async function reviewTransactionAction(transactionId, decision, rejectRea
     return {
       success:
         decision === 'Approved'
-          ? `APPROVED: ${trx.transaction_number} disetujui & stok otomatis diperbarui.`
-          : `REJECTED: ${trx.transaction_number} ditolak.`,
+          ? `Transaksi ${trx.transaction_number} disetujui & stok otomatis diperbarui.`
+          : `Transaksi ${trx.transaction_number} ditolak.`,
     };
-  } catch {
+  } catch (error) {
     await client.query('ROLLBACK');
-    return { error: 'SYSTEM ERROR: Gagal memproses transaksi database.' };
+    console.error('Gagal memproses transaksi:', error);
+    return { error: 'Gagal memproses transaksi database.' };
   } finally {
     client.release();
   }
@@ -448,23 +601,35 @@ export async function reviewTransactionAction(transactionId, decision, rejectRea
 export async function markTransactionShippedAction(transactionId) {
   const session = await getSession();
   if (!session || session.role !== 'staff_gudang') {
-    return { error: 'ACCESS DENIED: Hanya Staff Gudang yang dapat menandai pengiriman (Shipped).' };
+    return { error: 'Hanya Staff Gudang yang dapat menandai pengiriman (Shipped).' };
   }
 
-  const trxRes = await pool.query('SELECT * FROM transactions WHERE id = $1', [transactionId]);
+  const id = Number(transactionId);
+  if (!Number.isInteger(id) || id <= 0) return { error: 'Transaksi tidak valid.' };
+  const trxRes = await pool.query('SELECT * FROM transactions WHERE id = $1', [id]);
   const trx = trxRes.rows[0];
   if (!trx || trx.type !== 'outgoing' || trx.status !== 'Approved') {
     return { error: 'Hanya transaksi Outgoing berstatus Approved yang dapat diubah menjadi Shipped.' };
   }
 
-  await pool.query(`UPDATE transactions SET status = 'Shipped' WHERE id = $1`, [transactionId]);
+  // Status Shipped tidak mengubah stok lagi karena stok sudah dipotong saat Approved
+  const updateResult = await pool.query(
+    `UPDATE transactions SET status = 'Shipped' WHERE id = $1 AND type = 'outgoing' AND status = 'Approved'`,
+    [id]
+  );
+  if (updateResult.rowCount === 0) {
+    return { error: 'Status transaksi sudah berubah. Muat ulang halaman dan coba lagi.' };
+  }
   revalidatePath('/transactions');
   revalidatePath('/dashboard');
-  return { success: `DISPATCHED: ${trx.transaction_number} ditandai sebagai SHIPPED.` };
+  return { success: `Transaksi ${trx.transaction_number} ditandai sebagai Shipped.` };
 }
 
 // ==================== DASHBOARD AGGREGATION ====================
-export async function getDashboardData(session) {
+export async function getDashboardData() {
+  const session = await getSession();
+  if (!session) return null;
+
   if (session.role === 'admin') {
     const [statsRes, pendingSupRes, alertProdRes] = await Promise.all([
       pool.query(`
@@ -501,6 +666,7 @@ export async function getDashboardData(session) {
       pool.query(`
         SELECT
           (SELECT COUNT(*)::int FROM products WHERE current_stock <= low_stock) AS low_or_worse_count,
+          (SELECT COALESCE(SUM(current_stock), 0)::int FROM products) AS total_stock_units,
           (SELECT COUNT(*)::int FROM transactions WHERE status = 'Pending') AS pending_transactions_count,
           (SELECT COUNT(*)::int FROM restock_orders WHERE status IN ('Pending', 'Confirmed', 'In Transit')) AS active_po_count,
           (SELECT COALESCE(SUM(buy_price * current_stock), 0)::numeric FROM products) AS inventory_value
@@ -541,12 +707,20 @@ export async function getDashboardData(session) {
           (SELECT COUNT(*)::int FROM transactions WHERE transaction_date = CURRENT_DATE) AS today_transactions,
           (SELECT COUNT(*)::int FROM transactions WHERE status = 'Pending') AS pending_approval_count,
           (SELECT COUNT(*)::int FROM transactions WHERE type = 'outgoing' AND status = 'Approved') AS ready_to_ship_count,
-          (SELECT COUNT(*)::int FROM restock_orders WHERE status = 'Received') AS received_po_count
+          (SELECT COUNT(*)::int
+           FROM restock_orders ro
+           WHERE ro.status = 'Received'
+             AND NOT EXISTS (
+               SELECT 1
+               FROM transactions t
+               WHERE t.restock_order_id = ro.id AND t.status != 'Rejected'
+             )) AS received_po_count
       `),
       pool.query(`
         SELECT t.id, t.transaction_number, t.type, t.transaction_date, t.status, u.username AS created_by_name
         FROM transactions t
         JOIN users u ON u.id = t.created_by
+        WHERE t.transaction_date = CURRENT_DATE
         ORDER BY t.created_at DESC
         LIMIT 6
       `),
@@ -558,6 +732,9 @@ export async function getDashboardData(session) {
     };
   }
 
+  if (session.role !== 'supplier' || session.status !== 'approved') return null;
+
+  // Supplier
   const [statsRes, pendingPoRes] = await Promise.all([
     pool.query(
       `SELECT
@@ -574,9 +751,19 @@ export async function getDashboardData(session) {
       [session.id]
     ),
   ]);
+  const deliveriesRes = await pool.query(
+    `SELECT t.id, t.transaction_number, t.transaction_date, t.status, ro.po_number
+     FROM transactions t
+     LEFT JOIN restock_orders ro ON ro.id = t.restock_order_id
+     WHERE t.supplier_id = $1 AND t.type = 'incoming'
+     ORDER BY t.transaction_date DESC, t.id DESC
+     LIMIT 6`,
+    [session.id]
+  );
 
   return {
     stats: statsRes.rows[0],
     pendingOrders: pendingPoRes.rows,
+    recentDeliveries: deliveriesRes.rows,
   };
 }
