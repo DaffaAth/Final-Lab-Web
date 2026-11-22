@@ -1,70 +1,45 @@
-'use client';
+import { redirect } from 'next/navigation';
+import { getSession } from '@/lib/session';
+import { getTransactions, getAvailableReceivedPOs } from '@/app/actions/workflow';
+import { getApprovedSuppliers, getProducts } from '@/app/actions/master';
+import AppShell from '@/components/AppShell';
+import TransactionClient from './TransactionClient';
 
-import { useActionState } from 'react';
-import { loginAction } from '@/app/actions/auth';
-import Link from 'next/link';
+function queryValue(value, fallback = '') {
+  return typeof value === 'string' ? value : fallback;
+}
 
-export default function LoginPage() {
-  const [state, formAction, isPending] = useActionState(loginAction, null);
+export default async function TransactionsPage({ searchParams }) {
+  const session = await getSession();
+  if (!session) redirect('/login');
+  if (session.role === 'supplier') redirect('/dashboard');
+  const params = await searchParams;
+  const filters = {
+    type: queryValue(params?.type),
+    status: queryValue(params?.status),
+    dateFrom: queryValue(params?.dateFrom),
+    dateTo: queryValue(params?.dateTo),
+    party: queryValue(params?.party),
+    sortBy: queryValue(params?.sortBy, 'date_desc'),
+  };
+
+  const [transactions, suppliers, products, receivedPOs] = await Promise.all([
+    getTransactions(filters),
+    session.role === 'staff_gudang' ? getApprovedSuppliers() : Promise.resolve([]),
+    session.role === 'staff_gudang' ? getProducts() : Promise.resolve([]),
+    session.role === 'staff_gudang' ? getAvailableReceivedPOs() : Promise.resolve([]),
+  ]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-md border border-slate-200 p-8">
-        <div className="text-center mb-6">
-          <span className="inline-block px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold mb-2">
-            Warehouse Management System
-          </span>
-          <h1 className="text-2xl font-bold text-slate-800">Masuk ke Sistem Gudang</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Admin, Warehouse Manager, Staff Gudang, &amp; Supplier
-          </p>
-        </div>
-
-        {state?.error && (
-          <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
-            {state.error}
-          </div>
-        )}
-
-        <form action={formAction} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-            <input
-              type="email"
-              name="email"
-              required
-              placeholder="admin@gudang.com"
-              className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
-            <input
-              type="password"
-              name="password"
-              required
-              placeholder="••••••••"
-              className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={isPending}
-            className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition disabled:opacity-50"
-          >
-            {isPending ? 'Memproses...' : 'Login'}
-          </button>
-        </form>
-
-        <div className="mt-6 pt-5 border-t border-slate-100 text-center text-sm text-slate-600">
-          Mitra Supplier baru?{' '}
-          <Link href="/register" className="text-blue-600 font-semibold hover:underline">
-            Daftar Akun Supplier
-          </Link>
-        </div>
-      </div>
-    </div>
+    <AppShell session={session}>
+      <TransactionClient
+        session={session}
+        transactions={transactions}
+        suppliers={suppliers}
+        products={products}
+        receivedPOs={receivedPOs}
+        filters={filters}
+      />
+    </AppShell>
   );
 }
