@@ -1,7 +1,15 @@
 import { Pool } from 'pg';
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+const globalForPg = globalThis;
+
+const pool =
+  globalForPg.pgPool ||
+  new Pool({
+    connectionString: process.env.DATABASE_URL,
+  });
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForPg.pgPool = pool;
+}
 
 export default pool;

@@ -6,36 +6,36 @@ import { usePathname } from 'next/navigation';
 import { logoutAction } from '@/app/actions/auth';
 
 const ROLE_LABELS = {
-  admin: 'SYS // ADMIN',
-  warehouse_manager: 'OPS // MANAGER',
-  staff_gudang: 'DOCK // STAFF',
-  supplier: 'VENDOR // SUPPLIER',
+  admin: 'Administrator',
+  warehouse_manager: 'Warehouse Manager',
+  staff_gudang: 'Staff Gudang',
+  supplier: 'Mitra Supplier',
 };
 
 const NAV_BY_ROLE = {
   admin: [
-    { href: '/dashboard', label: '01. OVERVIEW HUD' },
-    { href: '/suppliers', label: '02. VENDOR CLEARANCE' },
-    { href: '/categories', label: '03. CARGO CLASSES' },
-    { href: '/products', label: '04. INVENTORY LEDGER' },
-    { href: '/restock', label: '05. RESTOCK DISPATCH' },
-    { href: '/transactions', label: '06. MOVEMENT LOGS' },
+    { href: '/dashboard', label: 'Dashboard' },
+    { href: '/suppliers', label: 'Verifikasi Supplier' },
+    { href: '/categories', label: 'Kategori Produk' },
+    { href: '/products', label: 'Manajemen Produk' },
+    { href: '/restock', label: 'Monitor Restock (PO)' },
+    { href: '/transactions', label: 'Monitor Transaksi' },
   ],
   warehouse_manager: [
-    { href: '/dashboard', label: '01. OVERVIEW HUD' },
-    { href: '/categories', label: '02. CARGO CLASSES' },
-    { href: '/products', label: '03. INVENTORY LEDGER' },
-    { href: '/restock', label: '04. RESTOCK DISPATCH' },
-    { href: '/transactions', label: '05. APPROVAL QUEUE' },
+    { href: '/dashboard', label: 'Dashboard' },
+    { href: '/categories', label: 'Kategori Produk' },
+    { href: '/products', label: 'Manajemen Produk' },
+    { href: '/restock', label: 'Restock Order (PO)' },
+    { href: '/transactions', label: 'Approval Transaksi' },
   ],
   staff_gudang: [
-    { href: '/dashboard', label: '01. DOCK TERMINAL' },
-    { href: '/products', label: '02. STOCK MANIFEST' },
-    { href: '/transactions', label: '03. IN / OUT GATEWAY' },
+    { href: '/dashboard', label: 'Dashboard' },
+    { href: '/products', label: 'Katalog & Stok Produk' },
+    { href: '/transactions', label: 'Barang Masuk & Keluar' },
   ],
   supplier: [
-    { href: '/dashboard', label: '01. VENDOR PORTAL' },
-    { href: '/restock', label: '02. PURCHASE ORDERS' },
+    { href: '/dashboard', label: 'Dashboard' },
+    { href: '/restock', label: 'Pesanan Restock (PO)' },
   ],
 };
 
@@ -46,47 +46,39 @@ export default function AppShell({ session, children }) {
   const navItems = NAV_BY_ROLE[session.role] || [];
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-[#0c0d0f] text-[#d6d3cd]">
-      {/* Mobile Tactical Topbar */}
-      <header className="md:hidden flex items-center justify-between bg-[#141619] border-b-2 border-[#2c3036] px-4 py-3 sticky top-0 z-30">
-        <div className="flex items-center gap-2">
-          <span className="font-black tracking-widest uppercase text-sm text-[#e8e6e1]">
-            LC // DOCKS
-          </span>
-          <span className="text-[10px] font-mono uppercase tracking-wider bg-[#22252a] text-[#d49b27] border border-[#d49b27]/40 px-2 py-0.5">
+    <div className="min-h-screen flex flex-col md:flex-row bg-slate-50">
+      {/* Mobile Header */}
+      <header className="app-mobile-header md:hidden flex items-center justify-between px-4 py-3 sticky top-0 z-30">
+        <div>
+          <span className="font-bold tracking-tight text-base">WMS Gudang</span>
+          <span className="ml-2 text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full">
             {ROLE_LABELS[session.role]}
           </span>
         </div>
         <button
           onClick={() => setMobileOpen(!mobileOpen)}
-          className="px-3 py-1 bg-[#1b1e22] border border-[#3a3f47] text-xs font-mono uppercase tracking-wider text-[#e8e6e1]"
+          className="app-mobile-menu-button px-3 py-1.5 rounded-lg text-sm font-medium"
+          aria-expanded={mobileOpen}
+          aria-label={mobileOpen ? 'Tutup menu navigasi' : 'Buka menu navigasi'}
         >
-          {mobileOpen ? '[ CLOSE ]' : '[ MENU ]'}
+          {mobileOpen ? 'Tutup' : 'Menu'}
         </button>
       </header>
 
-      {/* Gritty Industrial Sidebar */}
+      {/* Sidebar */}
       <aside
-        className={`${
+        className={`app-sidebar ${
           mobileOpen ? 'block' : 'hidden'
-        } fixed left-0 right-0 top-[56px] bottom-0 flex flex-col bg-[#121417] border-r-2 border-[#2c3036] z-20 md:flex md:w-64 md:top-0 md:bottom-auto md:fixed md:inset-y-0`}
+        } md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 z-20`}
       >
-        <div className="p-5 border-b-2 border-[#2c3036] bg-[#16191d]">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-mono uppercase tracking-[0.25em] text-[#7c7f85]">
-              BROKER TERMINAL 04
-            </span>
-            <span className="h-2 w-2 rounded-full bg-[#6c804b] shadow-[0_0_8px_#6c804b]" />
-          </div>
-          <div className="text-xl font-black uppercase tracking-wider text-[#e8e6e1] mt-1">
-            LIBERTY WAREHOUSE
-          </div>
-          <div className="mt-2.5 inline-block text-[11px] font-mono font-bold uppercase tracking-widest px-2.5 py-0.5 bg-[#1f2227] text-[#d49b27] border border-[#d49b27]/50">
+        <div className="app-sidebar-brand p-6 border-b">
+          <div className="app-sidebar-title text-lg font-bold tracking-tight">Manajemen Gudang</div>
+          <div className="app-sidebar-role mt-2 inline-block text-xs font-medium px-2.5 py-1 rounded-md">
             {ROLE_LABELS[session.role]}
           </div>
         </div>
 
-        <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {navItems.map((item) => {
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
@@ -94,11 +86,8 @@ export default function AppShell({ session, children }) {
                 key={item.href}
                 href={item.href}
                 onClick={() => setMobileOpen(false)}
-                className={`block px-3.5 py-2.5 text-xs font-mono font-bold uppercase tracking-wider border-l-4 transition ${
-                  active
-                    ? 'bg-[#1e2126] text-[#d49b27] border-[#d49b27]'
-                    : 'text-[#9a9d9e] border-transparent hover:bg-[#191c20] hover:text-[#e8e6e1] hover:border-[#4b5059]'
-                }`}
+                className="app-nav-link block px-3.5 py-2.5 rounded-lg text-sm font-medium"
+                aria-current={active ? 'page' : undefined}
               >
                 {item.label}
               </Link>
@@ -106,24 +95,19 @@ export default function AppShell({ session, children }) {
           })}
         </nav>
 
-        <div className="p-4 border-t-2 border-[#2c3036] bg-[#101215]">
-          <div className="mb-3 px-1">
-            <p className="text-[10px] font-mono uppercase tracking-widest text-[#7c7f85]">
-              ACTIVE OPERATOR
-            </p>
-            <p className="text-sm font-bold uppercase tracking-wide text-[#e8e6e1] truncate mt-0.5">
-              {session.username}
-            </p>
-            <p className="text-xs font-mono text-[#8b8e94] truncate">
+        <div className="app-sidebar-footer p-4 border-t">
+          <div className="mb-3 px-2">
+            <p className="app-sidebar-user text-sm font-semibold truncate">{session.username}</p>
+            <p className="text-xs text-slate-400 truncate">
               {session.company_name || session.email}
             </p>
           </div>
           <form action={logoutAction}>
             <button
               type="submit"
-              className="w-full py-2 px-3 bg-[#7f1d1d]/80 hover:bg-[#991b1b] border border-[#ef4444]/40 text-[#fca5a5] text-xs font-mono font-bold uppercase tracking-widest transition"
+              className="w-full py-2 px-3 rounded-lg bg-red-600/90 hover:bg-red-600 text-white text-sm font-semibold transition"
             >
-              [ DISCONNECT / LOGOUT ]
+              Keluar (Logout)
             </button>
           </form>
         </div>
