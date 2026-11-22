@@ -22,22 +22,17 @@ export default function DashboardClient({ session, data }) {
 
   return (
     <div className="space-y-6">
-      <div className="border-b-2 border-[#2c3036] pb-4 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
-        <div>
-          <span className="text-[11px] font-mono uppercase tracking-[0.2em] text-[#d49b27]">
-            OPERATIONAL TELEMETRY // LIVE FEED
-          </span>
-          <h1 className="text-2xl sm:text-3xl font-black uppercase tracking-wide text-[#e8e6e1] mt-1">
-            OPERATOR: {session.username}
-          </h1>
-        </div>
-        <span className="text-xs font-mono text-[#7c7f85]">
-          SECTOR: BROKER-IND-06
-        </span>
+      <div>
+        <h1 className="text-2xl font-bold text-slate-800">
+          Selamat Datang, {session.username}
+        </h1>
+        <p className="text-sm text-slate-500 mt-1">
+          Ringkasan operasional gudang real-time
+        </p>
       </div>
 
       {feedback && (
-        <div className="p-3 bg-[#1b222c] border-l-4 border-[#d49b27] text-[#f3d078] text-xs font-mono">
+        <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-sm">
           {feedback}
         </div>
       )}
@@ -46,70 +41,72 @@ export default function DashboardClient({ session, data }) {
       {session.role === 'admin' && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-[#141619] p-5 border-2 border-[#2c3036]">
-              <p className="text-[11px] font-mono uppercase tracking-wider text-[#7c7f85]">TOTAL CARGO SKUs</p>
-              <p className="text-3xl font-black font-mono text-[#e8e6e1] mt-1">{data.stats.total_products}</p>
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">Total Produk</p>
+              <p className="text-2xl font-bold text-slate-800 mt-1">{data.stats.total_products}</p>
             </div>
-            <div className="bg-[#141619] p-5 border-2 border-[#2c3036]">
-              <p className="text-[11px] font-mono uppercase tracking-wider text-[#7c7f85]">MONTHLY LOGS</p>
-              <p className="text-3xl font-black font-mono text-[#d49b27] mt-1">{data.stats.monthly_transactions}</p>
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">Transaksi Bulan Ini</p>
+              <p className="text-2xl font-bold text-blue-600 mt-1">{data.stats.monthly_transactions}</p>
             </div>
-            <div className="bg-[#141619] p-5 border-2 border-[#2c3036]">
-              <p className="text-[11px] font-mono uppercase tracking-wider text-[#7c7f85]">ASSET VALUATION</p>
-              <p className="text-xl font-black font-mono text-[#84a955] mt-2">
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">Nilai Inventori</p>
+              <p className="text-xl font-bold text-emerald-600 mt-1">
                 {formatRupiah(data.stats.inventory_value)}
               </p>
             </div>
-            <div className="bg-[#141619] p-5 border-2 border-[#2c3036]">
-              <p className="text-[11px] font-mono uppercase tracking-wider text-[#7c7f85]">PENDING VENDORS</p>
-              <p className="text-3xl font-black font-mono text-[#ef4444] mt-1">
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">Supplier Pending</p>
+              <p className="text-2xl font-bold text-amber-600 mt-1">
                 {data.stats.pending_suppliers_count}
               </p>
             </div>
           </div>
 
+          {/* Quick Access */}
           <div className="flex flex-wrap gap-2">
-            <Link href="/products" className="px-4 py-2 bg-[#d49b27] text-[#0c0d0f] font-mono font-black text-xs uppercase tracking-wider hover:bg-[#e0a934]">
-              [ + MANAGE CARGO ]
+            <Link href="/products" className="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-medium hover:bg-slate-700">
+              + Kelola Produk
             </Link>
-            <Link href="/categories" className="px-4 py-2 bg-[#1b1e22] border border-[#3a3f47] text-[#d6d3cd] font-mono text-xs uppercase tracking-wider hover:border-[#d49b27]">
-              CLASSES
+            <Link href="/categories" className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50">
+              Kelola Kategori
             </Link>
-            <Link href="/suppliers" className="px-4 py-2 bg-[#1b1e22] border border-[#3a3f47] text-[#d6d3cd] font-mono text-xs uppercase tracking-wider hover:border-[#d49b27]">
-              VENDORS
+            <Link href="/suppliers" className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50">
+              Semua Supplier
             </Link>
-            <Link href="/transactions" className="px-4 py-2 bg-[#1b1e22] border border-[#3a3f47] text-[#d6d3cd] font-mono text-xs uppercase tracking-wider hover:border-[#d49b27]">
-              AUDIT LOGS
+            <Link href="/transactions" className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50">
+              Log Transaksi
             </Link>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-[#141619] border-2 border-[#2c3036] p-5">
-              <h2 className="font-mono font-bold uppercase tracking-wider text-sm text-[#e8e6e1] border-b border-[#2c3036] pb-3 mb-3">
-                VENDOR CLEARANCE QUEUE ({data.pendingSuppliers.length})
+            {/* Pending Suppliers Approval */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+              <h2 className="font-bold text-slate-800 mb-3">
+                Persetujuan Supplier Pending ({data.pendingSuppliers.length})
               </h2>
               {data.pendingSuppliers.length === 0 ? (
-                <p className="text-xs font-mono text-[#7c7f85]">NO PENDING VENDOR DOSSIERS.</p>
+                <p className="text-sm text-slate-500">Tidak ada pendaftaran Supplier yang menunggu.</p>
               ) : (
                 <div className="space-y-3">
                   {data.pendingSuppliers.map((s) => (
-                    <div key={s.id} className="p-3 bg-[#1b1e22] border border-[#2c3036] flex items-center justify-between gap-3">
+                    <div key={s.id} className="p-3 rounded-lg border border-slate-200 flex items-center justify-between gap-3">
                       <div>
-                        <p className="font-bold text-sm text-[#e8e6e1] uppercase">{s.company_name}</p>
-                        <p className="text-xs font-mono text-[#8b8e94]">{s.username} // {s.email}</p>
+                        <p className="font-semibold text-sm text-slate-800">{s.company_name}</p>
+                        <p className="text-xs text-slate-500">{s.username} • {s.email}</p>
                       </div>
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleVerify(s.id, 'approved')}
-                          className="px-3 py-1 bg-[#4d6332] hover:bg-[#5e783d] text-[#e8e6e1] font-mono text-xs font-bold uppercase"
+                          className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-semibold"
                         >
-                          APPROVE
+                          Approve
                         </button>
                         <button
                           onClick={() => handleVerify(s.id, 'rejected')}
-                          className="px-3 py-1 bg-[#7f1d1d] hover:bg-[#991b1b] text-[#fca5a5] font-mono text-xs font-bold uppercase"
+                          className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-semibold"
                         >
-                          REJECT
+                          Reject
                         </button>
                       </div>
                     </div>
@@ -118,27 +115,28 @@ export default function DashboardClient({ session, data }) {
               )}
             </div>
 
-            <div className="bg-[#141619] border-2 border-[#2c3036] p-5">
-              <h2 className="font-mono font-bold uppercase tracking-wider text-sm text-[#ef4444] border-b border-[#2c3036] pb-3 mb-3">
-                CRITICAL STOCK ALERTS (SEVERE / DEPLETED)
+            {/* Alert Produk Severe / Out of Stock */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+              <h2 className="font-bold text-slate-800 mb-3">
+                Alert Stok Kritis (Severe &amp; Out of Stock)
               </h2>
               {data.alertProducts.length === 0 ? (
-                <p className="text-xs font-mono text-[#84a955]">ALL STOCK LEVELS NOMINAL.</p>
+                <p className="text-sm text-emerald-600">Seluruh stok produk dalam kondisi aman.</p>
               ) : (
-                <div className="divide-y divide-[#2c3036]">
+                <div className="divide-y divide-slate-100">
                   {data.alertProducts.map((p) => (
                     <div key={p.id} className="py-2.5 flex items-center justify-between">
                       <div>
-                        <Link href={`/products/${p.id}`} className="font-bold text-sm text-[#e8e6e1] hover:text-[#d49b27]">
+                        <Link href={`/products/${p.id}`} className="font-semibold text-sm text-slate-800 hover:text-blue-600">
                           {p.name}
                         </Link>
-                        <p className="text-xs font-mono text-[#8b8e94]">SKU: {p.sku} // REM: {p.current_stock} {p.unit}</p>
+                        <p className="text-xs text-slate-500">SKU: {p.sku} • Sisa: {p.current_stock} {p.unit}</p>
                       </div>
                       <span
-                        className={`px-2.5 py-0.5 font-mono text-[11px] font-bold uppercase border ${
+                        className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
                           p.stock_status === 'Out of Stock'
-                            ? 'bg-[#26292e] text-[#a1a1aa] border-[#52525b]'
-                            : 'bg-[#451416] text-[#fca5a5] border-[#dc2626]'
+                            ? 'bg-slate-200 text-slate-800'
+                            : 'bg-red-100 text-red-700'
                         }`}
                       >
                         {p.stock_status}
@@ -155,53 +153,55 @@ export default function DashboardClient({ session, data }) {
       {/* ==================== DASHBOARD WAREHOUSE MANAGER ==================== */}
       {session.role === 'warehouse_manager' && (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-[#141619] p-5 border-2 border-[#2c3036]">
-              <p className="text-[11px] font-mono uppercase tracking-wider text-[#7c7f85]">RESTOCK NEEDED</p>
-              <p className="text-3xl font-black font-mono text-[#ef4444] mt-1">{data.stats.low_or_worse_count}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">Perlu Restock (Low/Severe)</p>
+              <p className="text-2xl font-bold text-red-600 mt-1">{data.stats.low_or_worse_count}</p>
             </div>
-            <div className="bg-[#141619] p-5 border-2 border-[#2c3036]">
-              <p className="text-[11px] font-mono uppercase tracking-wider text-[#7c7f85]">PENDING APPROVAL</p>
-              <p className="text-3xl font-black font-mono text-[#d49b27] mt-1">{data.stats.pending_transactions_count}</p>
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">Total Unit Stok</p>
+              <p className="text-2xl font-bold text-slate-800 mt-1">
+                {Number(data.stats.total_stock_units).toLocaleString('id-ID')}
+              </p>
             </div>
-            <div className="bg-[#141619] p-5 border-2 border-[#2c3036]">
-              <p className="text-[11px] font-mono uppercase tracking-wider text-[#7c7f85]">ACTIVE POs</p>
-              <p className="text-3xl font-black font-mono text-[#60a5fa] mt-1">{data.stats.active_po_count}</p>
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">Transaksi Pending</p>
+              <p className="text-2xl font-bold text-amber-600 mt-1">{data.stats.pending_transactions_count}</p>
             </div>
-            <div className="bg-[#141619] p-5 border-2 border-[#2c3036]">
-              <p className="text-[11px] font-mono uppercase tracking-wider text-[#7c7f85]">ASSET VALUATION</p>
-              <p className="text-xl font-black font-mono text-[#84a955] mt-2">
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">PO Restock Berjalan</p>
+              <p className="text-2xl font-bold text-blue-600 mt-1">{data.stats.active_po_count}</p>
+            </div>
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">Nilai Inventori</p>
+              <p className="text-xl font-bold text-emerald-600 mt-1">
                 {formatRupiah(data.stats.inventory_value)}
               </p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-[#141619] border-2 border-[#2c3036] p-5">
-              <div className="flex items-center justify-between border-b border-[#2c3036] pb-3 mb-3">
-                <h2 className="font-mono font-bold uppercase tracking-wider text-sm text-[#e8e6e1]">
-                  TRANSACTIONS AWAITING CLEARANCE
-                </h2>
-                <Link href="/transactions" className="text-xs font-mono text-[#d49b27] hover:underline">
-                  ALL LOGS →
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-bold text-slate-800">Transaksi Menunggu Approval</h2>
+                <Link href="/transactions" className="text-xs text-blue-600 font-semibold hover:underline">
+                  Lihat Semua →
                 </Link>
               </div>
               {data.pendingTransactions.length === 0 ? (
-                <p className="text-xs font-mono text-[#7c7f85]">QUEUE EMPTY.</p>
+                <p className="text-sm text-slate-500">Tidak ada transaksi Pending.</p>
               ) : (
-                <div className="divide-y divide-[#2c3036]">
+                <div className="divide-y divide-slate-100">
                   {data.pendingTransactions.map((t) => (
                     <div key={t.id} className="py-2.5 flex items-center justify-between">
                       <div>
-                        <p className="font-mono font-bold text-sm text-[#e8e6e1]">{t.transaction_number}</p>
-                        <p className="text-xs font-mono text-[#8b8e94]">LOGGED BY: {t.created_by_name}</p>
+                        <p className="font-semibold text-sm text-slate-800">{t.transaction_number}</p>
+                        <p className="text-xs text-slate-500">Oleh: {t.created_by_name}</p>
                       </div>
-                      <span className={`px-2.5 py-0.5 font-mono text-xs font-bold uppercase border ${
-                        t.type === 'incoming'
-                          ? 'bg-[#1e2b18] text-[#a3e635] border-[#6c804b]'
-                          : 'bg-[#3b290e] text-[#facc15] border-[#d49b27]'
+                      <span className={`px-2.5 py-1 rounded text-xs font-semibold ${
+                        t.type === 'incoming' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'
                       }`}>
-                        {t.type === 'incoming' ? 'INCOMING' : 'OUTGOING'}
+                        {t.type === 'incoming' ? 'Barang Masuk' : 'Barang Keluar'}
                       </span>
                     </div>
                   ))}
@@ -209,31 +209,29 @@ export default function DashboardClient({ session, data }) {
               )}
             </div>
 
-            <div className="bg-[#141619] border-2 border-[#2c3036] p-5">
-              <div className="flex items-center justify-between border-b border-[#2c3036] pb-3 mb-3">
-                <h2 className="font-mono font-bold uppercase tracking-wider text-sm text-[#e8e6e1]">
-                  LOW STOCK WARNINGS
-                </h2>
-                <Link href="/restock" className="text-xs font-mono text-[#d49b27] hover:underline">
-                  ISSUE PO →
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-bold text-slate-800">Peringatan Stok Minimum</h2>
+                <Link href="/restock" className="text-xs text-blue-600 font-semibold hover:underline">
+                  Buat Restock PO →
                 </Link>
               </div>
               {data.alertProducts.length === 0 ? (
-                <p className="text-xs font-mono text-[#84a955]">ALL STOCK LEVELS NOMINAL.</p>
+                <p className="text-sm text-emerald-600">Semua stok berada di atas batas Low.</p>
               ) : (
-                <div className="divide-y divide-[#2c3036]">
+                <div className="divide-y divide-slate-100">
                   {data.alertProducts.map((p) => (
                     <div key={p.id} className="py-2.5 flex items-center justify-between">
                       <div>
-                        <p className="font-bold text-sm text-[#e8e6e1]">{p.name}</p>
-                        <p className="text-xs font-mono text-[#8b8e94]">STOCK: {p.current_stock} {p.unit} (MIN: {p.min_stock})</p>
+                        <p className="font-semibold text-sm text-slate-800">{p.name}</p>
+                        <p className="text-xs text-slate-500">Stok: {p.current_stock} {p.unit} (Min: {p.min_stock})</p>
                       </div>
-                      <span className={`px-2.5 py-0.5 font-mono text-[11px] font-bold uppercase border ${
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
                         p.stock_status === 'Out of Stock'
-                          ? 'bg-[#26292e] text-[#a1a1aa] border-[#52525b]'
+                          ? 'bg-slate-200 text-slate-800'
                           : p.stock_status === 'Severe'
-                          ? 'bg-[#451416] text-[#fca5a5] border-[#dc2626]'
-                          : 'bg-[#3b290e] text-[#facc15] border-[#d49b27]'
+                          ? 'bg-red-100 text-red-700'
+                          : 'bg-amber-100 text-amber-800'
                       }`}>
                         {p.stock_status}
                       </span>
@@ -250,47 +248,49 @@ export default function DashboardClient({ session, data }) {
       {session.role === 'staff_gudang' && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-[#141619] p-5 border-2 border-[#2c3036]">
-              <p className="text-[11px] font-mono uppercase tracking-wider text-[#7c7f85]">TODAY LOGS</p>
-              <p className="text-3xl font-black font-mono text-[#e8e6e1] mt-1">{data.stats.today_transactions}</p>
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">Transaksi Hari Ini</p>
+              <p className="text-2xl font-bold text-slate-800 mt-1">{data.stats.today_transactions}</p>
             </div>
-            <div className="bg-[#141619] p-5 border-2 border-[#2c3036]">
-              <p className="text-[11px] font-mono uppercase tracking-wider text-[#7c7f85]">AWAITING MANAGER</p>
-              <p className="text-3xl font-black font-mono text-[#d49b27] mt-1">{data.stats.pending_approval_count}</p>
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">Menunggu Approval</p>
+              <p className="text-2xl font-bold text-amber-600 mt-1">{data.stats.pending_approval_count}</p>
             </div>
-            <div className="bg-[#141619] p-5 border-2 border-[#2c3036]">
-              <p className="text-[11px] font-mono uppercase tracking-wider text-[#7c7f85]">READY FOR DISPATCH</p>
-              <p className="text-3xl font-black font-mono text-[#60a5fa] mt-1">{data.stats.ready_to_ship_count}</p>
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">Siap Dikirim (Approved)</p>
+              <p className="text-2xl font-bold text-blue-600 mt-1">{data.stats.ready_to_ship_count}</p>
             </div>
-            <div className="bg-[#141619] p-5 border-2 border-[#2c3036]">
-              <p className="text-[11px] font-mono uppercase tracking-wider text-[#7c7f85]">PO RECEIVED AT DOCK</p>
-              <p className="text-3xl font-black font-mono text-[#84a955] mt-1">{data.stats.received_po_count}</p>
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">PO Received Siap Masuk</p>
+              <p className="text-2xl font-bold text-emerald-600 mt-1">{data.stats.received_po_count}</p>
             </div>
           </div>
 
-          <div className="bg-[#141619] border-2 border-[#2c3036] p-5">
-            <div className="flex items-center justify-between border-b border-[#2c3036] pb-3 mb-3">
-              <h2 className="font-mono font-bold uppercase tracking-wider text-sm text-[#e8e6e1]">
-                RECENT DOCK MOVEMENTS
-              </h2>
-              <Link href="/transactions" className="px-3.5 py-1.5 bg-[#d49b27] text-[#0c0d0f] font-mono font-black text-xs uppercase">
-                [ + NEW ENTRY ]
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-bold text-slate-800">Transaksi Hari Ini</h2>
+              <Link href="/transactions" className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold">
+                + Catat Transaksi Baru
               </Link>
             </div>
-            <div className="divide-y divide-[#2c3036]">
-              {data.recentTransactions.map((t) => (
-                <div key={t.id} className="py-2.5 flex items-center justify-between">
-                  <div>
-                    <p className="font-mono font-bold text-sm text-[#e8e6e1]">{t.transaction_number}</p>
-                    <p className="text-xs font-mono text-[#8b8e94]">
-                      {t.type === 'incoming' ? 'INCOMING' : 'OUTGOING'} // BY {t.created_by_name}
-                    </p>
+            <div className="divide-y divide-slate-100">
+              {data.recentTransactions.length === 0 ? (
+                <p className="py-2.5 text-sm text-slate-500">Belum ada transaksi hari ini.</p>
+              ) : (
+                data.recentTransactions.map((t) => (
+                  <div key={t.id} className="py-2.5 flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-sm text-slate-800">{t.transaction_number}</p>
+                      <p className="text-xs text-slate-500">
+                        {t.type === 'incoming' ? 'Barang Masuk' : 'Barang Keluar'} • Oleh {t.created_by_name}
+                      </p>
+                    </div>
+                    <span className="px-2.5 py-1 rounded bg-slate-100 text-slate-700 text-xs font-semibold">
+                      {t.status}
+                    </span>
                   </div>
-                  <span className="px-2.5 py-0.5 bg-[#1b1e22] border border-[#3a3f47] text-[#d6d3cd] font-mono text-xs uppercase">
-                    {t.status}
-                  </span>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </>
@@ -300,42 +300,64 @@ export default function DashboardClient({ session, data }) {
       {session.role === 'supplier' && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-[#141619] p-5 border-2 border-[#2c3036]">
-              <p className="text-[11px] font-mono uppercase tracking-wider text-[#7c7f85]">PENDING POs</p>
-              <p className="text-3xl font-black font-mono text-[#d49b27] mt-1">{data.stats.pending_po_count}</p>
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">PO Perlu Konfirmasi</p>
+              <p className="text-2xl font-bold text-amber-600 mt-1">{data.stats.pending_po_count}</p>
             </div>
-            <div className="bg-[#141619] p-5 border-2 border-[#2c3036]">
-              <p className="text-[11px] font-mono uppercase tracking-wider text-[#7c7f85]">IN TRANSIT / CONFIRMED</p>
-              <p className="text-3xl font-black font-mono text-[#60a5fa] mt-1">{data.stats.ongoing_po_count}</p>
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">PO Diproses / Dikirim</p>
+              <p className="text-2xl font-bold text-blue-600 mt-1">{data.stats.ongoing_po_count}</p>
             </div>
-            <div className="bg-[#141619] p-5 border-2 border-[#2c3036]">
-              <p className="text-[11px] font-mono uppercase tracking-wider text-[#7c7f85]">DELIVERED TO DOCK</p>
-              <p className="text-3xl font-black font-mono text-[#84a955] mt-1">{data.stats.completed_po_count}</p>
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">PO Diterima Gudang</p>
+              <p className="text-2xl font-bold text-emerald-600 mt-1">{data.stats.completed_po_count}</p>
             </div>
           </div>
 
-          <div className="bg-[#141619] border-2 border-[#2c3036] p-5">
-            <div className="flex items-center justify-between border-b border-[#2c3036] pb-3 mb-3">
-              <h2 className="font-mono font-bold uppercase tracking-wider text-sm text-[#e8e6e1]">
-                PURCHASE ORDERS AWAITING CONFIRMATION
-              </h2>
-              <Link href="/restock" className="text-xs font-mono text-[#d49b27] hover:underline">
-                MANAGE POs →
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-bold text-slate-800">Purchase Order Menunggu Konfirmasi Anda</h2>
+              <Link href="/restock" className="text-xs text-blue-600 font-semibold hover:underline">
+                Kelola Semua PO →
               </Link>
             </div>
             {data.pendingOrders.length === 0 ? (
-              <p className="text-xs font-mono text-[#7c7f85]">NO NEW PURCHASE ORDERS.</p>
+              <p className="text-sm text-slate-500">Tidak ada pesanan restock baru yang menunggu konfirmasi.</p>
             ) : (
-              <div className="divide-y divide-[#2c3036]">
+              <div className="divide-y divide-slate-100">
                 {data.pendingOrders.map((po) => (
                   <div key={po.id} className="py-3 flex items-center justify-between">
                     <div>
-                      <p className="font-mono font-bold text-sm text-[#e8e6e1]">{po.po_number}</p>
-                      <p className="text-xs font-mono text-[#8b8e94]">NOTES: {po.notes || '-'}</p>
+                      <p className="font-semibold text-sm text-slate-800">{po.po_number}</p>
+                      <p className="text-xs text-slate-500">Catatan: {po.notes || '-'}</p>
                     </div>
-                    <Link href="/restock" className="px-3.5 py-1.5 bg-[#d49b27] text-[#0c0d0f] font-mono font-black text-xs uppercase">
-                      [ INSPECT PO ]
+                    <Link href="/restock" className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold">
+                      Tinjau PO
                     </Link>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+            <h2 className="font-bold text-slate-800 mb-3">Riwayat Pengiriman ke Gudang</h2>
+            {data.recentDeliveries.length === 0 ? (
+              <p className="text-sm text-slate-500">Belum ada transaksi pengiriman kepada gudang.</p>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {data.recentDeliveries.map((delivery) => (
+                  <div key={delivery.id} className="py-2.5 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="font-semibold text-sm text-slate-800">{delivery.transaction_number}</p>
+                      <p className="text-xs text-slate-500">
+                        {delivery.po_number ? `PO ${delivery.po_number} • ` : ''}
+                        {new Date(delivery.transaction_date).toLocaleDateString('id-ID')}
+                      </p>
+                    </div>
+                    <span className="px-2.5 py-1 rounded bg-slate-100 text-slate-700 text-xs font-semibold">
+                      {delivery.status}
+                    </span>
                   </div>
                 ))}
               </div>

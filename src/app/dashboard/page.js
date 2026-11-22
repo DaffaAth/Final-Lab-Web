@@ -12,7 +12,8 @@ export default async function DashboardPage() {
     redirect('/login');
   }
 
-  const data = await getDashboardData(session);
+  const data = await getDashboardData();
+  if (!data) redirect('/login');
 
   return (
     <AppShell session={session}>
