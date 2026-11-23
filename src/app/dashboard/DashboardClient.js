@@ -289,7 +289,7 @@ export default function DashboardClient({ session, data }) {
               <p className="text-2xl font-bold text-blue-600 mt-1">{data.stats.ready_to_ship_count}</p>
             </div>
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-              <p className="text-xs font-semibold text-slate-500 uppercase">PO Received Siap Masuk</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase">PO Diperiksa Siap Dicatat</p>
               <p className="text-2xl font-bold text-emerald-600 mt-1">{data.stats.received_po_count}</p>
             </div>
           </div>

@@ -1,9 +1,13 @@
 'use client';
 
 import { useActionState, useState } from 'react';
-import { createRestockOrderAction, updateRestockStatusAction } from '@/app/actions/workflow';
+import {
+  createRestockOrderAction,
+  updateRestockStatusAction,
+  submitArrivalProofAction,
+} from '@/app/actions/workflow';
 
-const RESTOCK_STEPS = ['Pending', 'Confirmed', 'In Transit', 'Received'];
+const RESTOCK_STEPS = ['Pending', 'Confirmed', 'In Transit', 'Inspecting', 'Received'];
 
 export default function RestockClient({ session, orders, suppliers, products, suggestedProductId }) {
   const isManager = session.role === 'warehouse_manager';
@@ -14,6 +18,7 @@ export default function RestockClient({ session, orders, suppliers, products, su
   const [msg, setMsg] = useState('');
   const [rejectId, setRejectId] = useState(null);
   const [rejectNote, setRejectNote] = useState('');
+  const [proofUrls, setProofUrls] = useState({});
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -41,19 +46,25 @@ export default function RestockClient({ session, orders, suppliers, products, su
     }
   }
 
+  async function handleProofSubmit(orderId) {
+    const res = await submitArrivalProofAction(orderId, proofUrls[orderId] || '');
+    setMsg(res.error || res.success);
+    if (res.success) setProofUrls((prev) => ({ ...prev, [orderId]: '' }));
+  }
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-800">Restock Order (Purchase Order)</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Alur pengadaan stok: Manager Buat PO → Supplier Konfirmasi → In Transit → Received
+          Alur pengadaan stok: Manager Buat PO → Supplier Konfirmasi → Supplier Kirim (In Transit) → Manager/Staff Periksa (Inspecting) → Received/Returned
         </p>
       </div>
 
       {(state?.error || state?.success || msg) && (
         <div
           className={`p-3 rounded-lg text-sm border ${
-            state?.error || msg.includes('wajib') || msg.includes('tidak')
+            state?.error || msg.includes('wajib') || msg.includes('tidak') || msg.includes('belum')
               ? 'bg-red-50 border-red-200 text-red-700'
               : 'bg-emerald-50 border-emerald-200 text-emerald-700'
           }`}
@@ -194,8 +205,8 @@ export default function RestockClient({ session, orders, suppliers, products, su
                 </span>
               </div>
 
-              {po.status !== 'Rejected' && (
-                <ol className="grid grid-cols-2 sm:grid-cols-4 gap-2" aria-label="Progress Restock Order">
+              {po.status !== 'Rejected' && po.status !== 'Returned' && (
+                <ol className="grid grid-cols-2 sm:grid-cols-5 gap-2" aria-label="Progress Restock Order">
                   {RESTOCK_STEPS.map((step, index) => {
                     const complete = index <= RESTOCK_STEPS.indexOf(po.status);
                     return (
@@ -229,6 +240,19 @@ export default function RestockClient({ session, orders, suppliers, products, su
                 {po.notes && <p className="pt-1">Catatan Manager: {po.notes}</p>}
                 {po.status_notes && (
                   <p className="text-red-600 font-medium">Catatan Status: {po.status_notes}</p>
+                )}
+                {po.arrival_photo_url && (
+                  <p>
+                    Bukti foto kedatangan:{' '}
+                    <a
+                      href={po.arrival_photo_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 underline"
+                    >
+                      Lihat foto
+                    </a>
+                  </p>
                 )}
               </div>
 
@@ -269,26 +293,56 @@ export default function RestockClient({ session, orders, suppliers, products, su
                 </div>
               )}
 
-              {/* Aksi Manager */}
-              {isManager && po.status === 'Confirmed' && (
+              {/* Aksi Supplier: kirim barang & serahkan bukti foto kedatangan */}
+              {isSupplier && po.status === 'Confirmed' && (
                 <div className="pt-2">
                   <button
                     onClick={() => handleStatusChange(po.id, 'In Transit')}
                     className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold"
                   >
-                    Tandai In Transit
+                    Kirim Barang (In Transit)
                   </button>
                 </div>
               )}
-              {isManager && po.status === 'In Transit' && (
-                <div className="pt-2">
+              {isSupplier && po.status === 'In Transit' && (
+                <div className="pt-2 flex gap-2">
+                  <input
+                    type="url"
+                    value={proofUrls[po.id] || ''}
+                    onChange={(e) => setProofUrls({ ...proofUrls, [po.id]: e.target.value })}
+                    placeholder="URL foto bukti kedatangan barang (https://...)"
+                    className="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-xs"
+                  />
                   <button
-                    onClick={() => handleStatusChange(po.id, 'Received')}
-                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold"
+                    onClick={() => handleProofSubmit(po.id)}
+                    className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold"
                   >
-                    Tandai Received (Barang Tiba)
+                    {po.arrival_photo_url ? 'Ganti Bukti Foto' : 'Serahkan Bukti Foto'}
                   </button>
                 </div>
+              )}
+
+              {/* Aksi Manager: mulai pemeriksaan fisik setelah bukti foto diterima */}
+              {isManager && po.status === 'In Transit' && (
+                <div className="pt-2">
+                  {po.arrival_photo_url ? (
+                    <button
+                      onClick={() => handleStatusChange(po.id, 'Inspecting')}
+                      className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold"
+                    >
+                      Terima Bukti &amp; Mulai Pemeriksaan (Inspecting)
+                    </button>
+                  ) : (
+                    <p className="text-xs text-amber-700">
+                      Menunggu Supplier menyerahkan bukti foto kedatangan barang.
+                    </p>
+                  )}
+                </div>
+              )}
+              {po.status === 'Inspecting' && (isManager || isSupplier) && (
+                <p className="pt-2 text-xs text-slate-500">
+                  Barang sedang diperiksa Staff Gudang. Menunggu keputusan Manager (Received/Returned).
+                </p>
               )}
             </div>
           ))

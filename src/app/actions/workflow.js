@@ -65,7 +65,7 @@ export async function getAvailableReceivedPOs() {
   const session = await getSession();
   if (!session || session.role !== 'staff_gudang') return [];
 
-  // PO berstatus Received yang belum dipakai transaksi Incoming aktif (selain Rejected)
+  // PO berstatus Inspecting yang belum dipakai transaksi Incoming aktif (selain Rejected)
   const res = await pool.query(`
     SELECT ro.id, ro.po_number, ro.supplier_id, s.company_name AS supplier_company, s.username AS supplier_name,
       COALESCE(
@@ -82,7 +82,7 @@ export async function getAvailableReceivedPOs() {
       ) AS items
     FROM restock_orders ro
     JOIN users s ON s.id = ro.supplier_id
-    WHERE ro.status = 'Received'
+    WHERE ro.status = 'Inspecting'
       AND NOT EXISTS (
         SELECT 1 FROM transactions t
         WHERE t.restock_order_id = ro.id AND t.status != 'Rejected'
@@ -183,20 +183,26 @@ export async function updateRestockStatusAction(orderId, newStatus, statusNotes 
   if (!order) return { error: 'Restock Order tidak ditemukan.' };
 
   // Validasi hak akses & transisi status
+  // Siklus: Pending -> Confirmed/Rejected -> In Transit -> Inspecting -> Received/Returned
   if (session.role === 'supplier') {
     if (order.supplier_id !== session.id) return { error: 'Akses ditolak.' };
-    if (order.status !== 'Pending') return { error: 'PO ini sudah diproses sebelumnya.' };
-    if (!['Confirmed', 'Rejected'].includes(newStatus)) return { error: 'Status tidak valid untuk Supplier.' };
+    const supplierTransitions = {
+      Pending: ['Confirmed', 'Rejected'],
+      Confirmed: ['In Transit'],
+    };
+    if (!(supplierTransitions[order.status] || []).includes(newStatus)) {
+      return { error: `Supplier tidak dapat mengubah status dari ${order.status} ke ${newStatus}.` };
+    }
     if (newStatus === 'Rejected' && !note) {
       return { error: 'Catatan penolakan wajib diisi.' };
     }
   } else if (session.role === 'warehouse_manager') {
-    const validTransitions = {
-      Confirmed: 'In Transit',
-      'In Transit': 'Received',
-    };
-    if (validTransitions[order.status] !== newStatus) {
+    // Manager hanya memulai pemeriksaan fisik setelah menerima bukti foto kedatangan dari Supplier
+    if (order.status !== 'In Transit' || newStatus !== 'Inspecting') {
       return { error: `Perubahan status dari ${order.status} ke ${newStatus} tidak diizinkan.` };
+    }
+    if (!order.arrival_photo_url) {
+      return { error: 'Bukti foto kedatangan belum diserahkan Supplier.' };
     }
   } else {
     return { error: 'Anda tidak memiliki hak mengubah status PO.' };
@@ -214,6 +220,37 @@ export async function updateRestockStatusAction(orderId, newStatus, statusNotes 
   revalidatePath('/transactions');
   revalidatePath('/dashboard');
   return { success: `Status PO ${order.po_number} diperbarui menjadi ${newStatus}.` };
+}
+
+export async function submitArrivalProofAction(orderId, photoUrl) {
+  const session = await getSession();
+  if (!session || session.role !== 'supplier') {
+    return { error: 'Hanya Supplier yang dapat menyerahkan bukti foto kedatangan.' };
+  }
+  const id = Number(orderId);
+  if (!Number.isInteger(id) || id <= 0) return { error: 'Restock Order tidak valid.' };
+
+  const url = typeof photoUrl === 'string' ? photoUrl.trim() : '';
+  if (!url) return { error: 'URL bukti foto wajib diisi.' };
+  try {
+    const parsed = new URL(url);
+    if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('protocol');
+  } catch {
+    return { error: 'URL bukti foto tidak valid (harus diawali http:// atau https://).' };
+  }
+
+  const result = await pool.query(
+    `UPDATE restock_orders
+     SET arrival_photo_url = $1
+     WHERE id = $2 AND supplier_id = $3 AND status = 'In Transit'`,
+    [url, id, session.id]
+  );
+  if (result.rowCount === 0) {
+    return { error: 'Bukti foto hanya dapat diserahkan untuk PO milik Anda yang berstatus In Transit.' };
+  }
+
+  revalidatePath('/restock');
+  return { success: 'Bukti foto kedatangan berhasil diserahkan kepada Manager.' };
 }
 
 // ==================== TRANSACTIONS (INCOMING & OUTGOING) ====================
@@ -337,9 +374,9 @@ export async function createTransactionAction(prevState, formData) {
         [restock_order_id]
       );
       const order = poResult.rows[0];
-      if (!order || order.status !== 'Received') {
+      if (!order || order.status !== 'Inspecting') {
         await client.query('ROLLBACK');
-        return { error: 'Restock Order harus berstatus Received.' };
+        return { error: 'Restock Order harus berstatus Inspecting (sedang diperiksa).' };
       }
 
       const usedOrder = await client.query(
@@ -555,6 +592,16 @@ export async function reviewTransactionAction(transactionId, decision, rejectRea
       // Stok bertambah HANYA untuk Incoming yang di-Approve.
       // Outgoing: stok belum berubah saat Approved (baru berkurang saat Shipped).
       if (trx.type === 'incoming') {
+        if (trx.restock_order_id) {
+          const poUpdate = await client.query(
+            `UPDATE restock_orders SET status = 'Received' WHERE id = $1 AND status = 'Inspecting'`,
+            [trx.restock_order_id]
+          );
+          if (poUpdate.rowCount === 0) {
+            await client.query('ROLLBACK');
+            return { error: 'Gagal Approve: PO terkait tidak berstatus Inspecting.' };
+          }
+        }
         for (const item of itemsRes.rows) {
           await client.query(
             'UPDATE products SET current_stock = current_stock + $1 WHERE id = $2',
@@ -698,7 +745,7 @@ export async function getDashboardData() {
           (SELECT COUNT(*)::int FROM products WHERE current_stock <= low_stock) AS low_or_worse_count,
           (SELECT COALESCE(SUM(current_stock), 0)::int FROM products) AS total_stock_units,
           (SELECT COUNT(*)::int FROM transactions WHERE status = 'Pending') AS pending_transactions_count,
-          (SELECT COUNT(*)::int FROM restock_orders WHERE status IN ('Pending', 'Confirmed', 'In Transit')) AS active_po_count,
+          (SELECT COUNT(*)::int FROM restock_orders WHERE status IN ('Pending', 'Confirmed', 'In Transit', 'Inspecting')) AS active_po_count,
           (SELECT COALESCE(SUM(buy_price * current_stock), 0)::numeric FROM products) AS inventory_value
       `),
       pool.query(`
@@ -739,7 +786,7 @@ export async function getDashboardData() {
           (SELECT COUNT(*)::int FROM transactions WHERE type = 'outgoing' AND status = 'Approved') AS ready_to_ship_count,
           (SELECT COUNT(*)::int
            FROM restock_orders ro
-           WHERE ro.status = 'Received'
+           WHERE ro.status = 'Inspecting'
              AND NOT EXISTS (
                SELECT 1
                FROM transactions t
@@ -769,7 +816,7 @@ export async function getDashboardData() {
     pool.query(
       `SELECT
         (SELECT COUNT(*)::int FROM restock_orders WHERE supplier_id = $1 AND status = 'Pending') AS pending_po_count,
-        (SELECT COUNT(*)::int FROM restock_orders WHERE supplier_id = $1 AND status IN ('Confirmed', 'In Transit')) AS ongoing_po_count,
+        (SELECT COUNT(*)::int FROM restock_orders WHERE supplier_id = $1 AND status IN ('Confirmed', 'In Transit', 'Inspecting')) AS ongoing_po_count,
         (SELECT COUNT(*)::int FROM restock_orders WHERE supplier_id = $1 AND status = 'Received') AS completed_po_count`,
       [session.id]
     ),

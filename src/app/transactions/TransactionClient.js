@@ -259,7 +259,7 @@ export default function TransactionClient({ session, transactions, suppliers, pr
               <>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    Referensi PO Received (Opsional)
+                    Referensi PO Inspecting (Opsional)
                   </label>
                   <select
                     name="restock_order_id"
