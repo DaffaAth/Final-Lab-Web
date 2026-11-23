@@ -503,12 +503,14 @@ export default function TransactionClient({ session, transactions, suppliers, pr
               {/* Aksi Staff pada Transaksi Pending / Approved Outgoing */}
               {isStaff && trx.status === 'Pending' && (
                 <div className="pt-2 flex gap-2">
-                  <button
-                    onClick={() => startEdit(trx)}
-                    className="px-3 py-1.5 bg-amber-100 text-amber-800 rounded-lg text-xs font-semibold"
-                  >
-                    Edit
-                  </button>
+                  {trx.created_by === session.id && (
+                    <button
+                      onClick={() => startEdit(trx)}
+                      className="px-3 py-1.5 bg-amber-100 text-amber-800 rounded-lg text-xs font-semibold"
+                    >
+                      Edit
+                    </button>
+                  )}
                   {trx.created_by === session.id && (
                     <button
                       onClick={() => handleDelete(trx.id)}
@@ -526,7 +528,7 @@ export default function TransactionClient({ session, transactions, suppliers, pr
                     onClick={() => handleShipped(trx.id)}
                     className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold"
                   >
-                    Tandai Shipped (Dikirim)
+                    Kirim Barang (Shipped)
                   </button>
                 </div>
               )}
@@ -539,7 +541,7 @@ export default function TransactionClient({ session, transactions, suppliers, pr
                       onClick={() => handleReview(trx.id, 'Approved')}
                       className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold"
                     >
-                      Approve &amp; Update Stok
+                      {trx.type === 'incoming' ? 'Approve & Tambah Stok' : 'Approve'}
                     </button>
                     <button
                       onClick={() => setRejectId(rejectId === trx.id ? null : trx.id)}

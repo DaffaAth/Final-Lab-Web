@@ -15,7 +15,7 @@ export async function loginAction(prevState, formData) {
   let user;
   try {
     const res = await pool.query(
-      'SELECT id, username, email, password, role, status, company_name FROM users WHERE email = $1',
+      'SELECT id, username, email, password, role, status, company_name, reject_reason FROM users WHERE email = $1',
       [email]
     );
     user = res.rows[0];
@@ -32,7 +32,9 @@ export async function loginAction(prevState, formData) {
       return { error: 'Akun Supplier Anda berstatus Pending dan sedang ditinjau oleh Admin.' };
     }
     if (user.status === 'rejected') {
-      return { error: 'Pendaftaran akun Supplier Anda telah ditolak oleh Admin.' };
+      return {
+        error: `Pendaftaran akun Supplier Anda telah ditolak oleh Admin. Alasan: ${user.reject_reason || '-'}`,
+      };
     }
   }
 

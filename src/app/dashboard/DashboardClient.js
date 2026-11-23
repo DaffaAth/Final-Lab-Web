@@ -15,9 +15,16 @@ function formatRupiah(val) {
 export default function DashboardClient({ session, data }) {
   const [feedback, setFeedback] = useState('');
 
-  async function handleVerify(id, status) {
-    const res = await verifySupplierAction(id, status);
+  const [rejectId, setRejectId] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
+
+  async function handleVerify(id, status, reason = '') {
+    const res = await verifySupplierAction(id, status, reason);
     setFeedback(res.error || res.success);
+    if (res.success) {
+      setRejectId(null);
+      setRejectReason('');
+    }
   }
 
   return (
@@ -90,7 +97,8 @@ export default function DashboardClient({ session, data }) {
               ) : (
                 <div className="space-y-3">
                   {data.pendingSuppliers.map((s) => (
-                    <div key={s.id} className="p-3 rounded-lg border border-slate-200 flex items-center justify-between gap-3">
+                    <div key={s.id} className="p-3 rounded-lg border border-slate-200 space-y-2">
+                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="font-semibold text-sm text-slate-800">{s.company_name}</p>
                         <p className="text-xs text-slate-500">{s.username} • {s.email}</p>
@@ -103,12 +111,32 @@ export default function DashboardClient({ session, data }) {
                           Approve
                         </button>
                         <button
-                          onClick={() => handleVerify(s.id, 'rejected')}
+                          onClick={() => {
+                            setRejectId(rejectId === s.id ? null : s.id);
+                            setRejectReason('');
+                          }}
                           className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-semibold"
                         >
                           Reject
                         </button>
                       </div>
+                     </div>
+                     {rejectId === s.id && (
+                       <div className="flex gap-2">
+                         <input
+                           value={rejectReason}
+                           onChange={(e) => setRejectReason(e.target.value)}
+                           placeholder="Alasan penolakan (wajib)"
+                           className="flex-1 px-2 py-1 border border-slate-300 rounded text-xs"
+                         />
+                         <button
+                           onClick={() => handleVerify(s.id, 'rejected', rejectReason)}
+                           className="px-3 py-1 bg-red-700 text-white rounded text-xs font-semibold"
+                         >
+                           Kirim
+                         </button>
+                       </div>
+                     )}
                     </div>
                   ))}
                 </div>

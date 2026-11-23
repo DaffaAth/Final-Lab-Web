@@ -200,14 +200,19 @@ export default function ProductClient({ session, products, categories, filters, 
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">Stok Saat Ini *</label>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">
+                {editing ? 'Stok Saat Ini (hanya berubah lewat transaksi)' : 'Stok Awal *'}
+              </label>
               <input
                 type="number"
                 min="0"
                 name="current_stock"
                 defaultValue={editing?.current_stock ?? 0}
+                readOnly={!!editing}
                 required
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                className={`w-full px-3 py-2 border border-slate-300 rounded-lg text-sm ${
+                  editing ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''
+                }`}
               />
             </div>
 

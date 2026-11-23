@@ -434,6 +434,10 @@ export async function editPendingTransactionAction(transactionId, notes, items) 
       await client.query('ROLLBACK');
       return { error: 'Hanya transaksi berstatus Pending yang dapat diedit.' };
     }
+    if (trx.created_by !== session.id) {
+      await client.query('ROLLBACK');
+      return { error: 'Staff hanya dapat mengedit transaksi yang dibuatnya sendiri.' };
+    }
 
     if (trx.type === 'outgoing') {
       for (const item of items) {
@@ -548,24 +552,12 @@ export async function reviewTransactionAction(transactionId, decision, rejectRea
         return { error: 'Transaksi tidak memiliki produk.' };
       }
 
-      for (const item of itemsRes.rows) {
-        if (trx.type === 'incoming') {
+      // Stok bertambah HANYA untuk Incoming yang di-Approve.
+      // Outgoing: stok belum berubah saat Approved (baru berkurang saat Shipped).
+      if (trx.type === 'incoming') {
+        for (const item of itemsRes.rows) {
           await client.query(
             'UPDATE products SET current_stock = current_stock + $1 WHERE id = $2',
-            [item.quantity, item.product_id]
-          );
-        } else {
-          const prodRes = await client.query(
-            'SELECT name, current_stock FROM products WHERE id = $1 FOR UPDATE',
-            [item.product_id]
-          );
-          const prod = prodRes.rows[0];
-          if (!prod || prod.current_stock < item.quantity) {
-            await client.query('ROLLBACK');
-            return { error: `Gagal Approve: stok "${prod?.name}" tidak mencukupi.` };
-          }
-          await client.query(
-            'UPDATE products SET current_stock = current_stock - $1 WHERE id = $2',
             [item.quantity, item.product_id]
           );
         }
@@ -586,7 +578,9 @@ export async function reviewTransactionAction(transactionId, decision, rejectRea
     return {
       success:
         decision === 'Approved'
-          ? `Transaksi ${trx.transaction_number} disetujui & stok otomatis diperbarui.`
+          ? trx.type === 'incoming'
+            ? `Transaksi ${trx.transaction_number} disetujui & stok otomatis bertambah.`
+            : `Transaksi ${trx.transaction_number} disetujui. Stok baru berkurang setelah barang dikirim (Shipped).`
           : `Transaksi ${trx.transaction_number} ditolak.`,
     };
   } catch (error) {
@@ -606,23 +600,59 @@ export async function markTransactionShippedAction(transactionId) {
 
   const id = Number(transactionId);
   if (!Number.isInteger(id) || id <= 0) return { error: 'Transaksi tidak valid.' };
-  const trxRes = await pool.query('SELECT * FROM transactions WHERE id = $1', [id]);
-  const trx = trxRes.rows[0];
-  if (!trx || trx.type !== 'outgoing' || trx.status !== 'Approved') {
-    return { error: 'Hanya transaksi Outgoing berstatus Approved yang dapat diubah menjadi Shipped.' };
-  }
 
-  // Status Shipped tidak mengubah stok lagi karena stok sudah dipotong saat Approved
-  const updateResult = await pool.query(
-    `UPDATE transactions SET status = 'Shipped' WHERE id = $1 AND type = 'outgoing' AND status = 'Approved'`,
-    [id]
-  );
-  if (updateResult.rowCount === 0) {
-    return { error: 'Status transaksi sudah berubah. Muat ulang halaman dan coba lagi.' };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const trxRes = await client.query('SELECT * FROM transactions WHERE id = $1 FOR UPDATE', [id]);
+    const trx = trxRes.rows[0];
+    if (!trx || trx.type !== 'outgoing' || trx.status !== 'Approved') {
+      await client.query('ROLLBACK');
+      return { error: 'Hanya transaksi Outgoing berstatus Approved yang dapat diubah menjadi Shipped.' };
+    }
+
+    const itemsRes = await client.query(
+      'SELECT product_id, quantity FROM transaction_items WHERE transaction_id = $1 ORDER BY product_id ASC',
+      [id]
+    );
+    if (itemsRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return { error: 'Transaksi tidak memiliki produk.' };
+    }
+
+    // Validasi ulang stok, lalu kurangi stok saat Shipped (aturan stok mutlak)
+    for (const item of itemsRes.rows) {
+      const prodRes = await client.query(
+        'SELECT name, current_stock FROM products WHERE id = $1 FOR UPDATE',
+        [item.product_id]
+      );
+      const prod = prodRes.rows[0];
+      if (!prod || Number(prod.current_stock) < item.quantity) {
+        await client.query('ROLLBACK');
+        return {
+          error: `Gagal Shipped: stok "${prod?.name || 'Produk'}" tidak mencukupi (tersedia: ${prod?.current_stock ?? 0}).`,
+        };
+      }
+      await client.query(
+        'UPDATE products SET current_stock = current_stock - $1 WHERE id = $2',
+        [item.quantity, item.product_id]
+      );
+    }
+
+    await client.query(`UPDATE transactions SET status = 'Shipped' WHERE id = $1`, [id]);
+    await client.query('COMMIT');
+
+    revalidatePath('/transactions');
+    revalidatePath('/products');
+    revalidatePath('/dashboard');
+    return { success: `Transaksi ${trx.transaction_number} dikirim (Shipped) & stok otomatis berkurang.` };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Gagal menandai Shipped:', error);
+    return { error: 'Gagal memproses pengiriman.' };
+  } finally {
+    client.release();
   }
-  revalidatePath('/transactions');
-  revalidatePath('/dashboard');
-  return { success: `Transaksi ${trx.transaction_number} ditandai sebagai Shipped.` };
 }
 
 // ==================== DASHBOARD AGGREGATION ====================

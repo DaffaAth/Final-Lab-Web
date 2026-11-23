@@ -131,10 +131,10 @@ export async function getSuppliers() {
   if (!session || session.role !== 'admin') return [];
 
   const result = await pool.query(`
-    SELECT id, username, company_name, email, status, created_at
+    SELECT id, username, company_name, email, status, reject_reason, created_at
     FROM users
-    WHERE role = 'supplier' AND status = 'pending'
-    ORDER BY created_at DESC, id DESC
+    WHERE role = 'supplier'
+    ORDER BY (status = 'pending') DESC, created_at DESC, id DESC
   `);
   return result.rows;
 }
@@ -222,8 +222,7 @@ export async function saveProductAction(prevState, formData) {
     minStock < 0 ||
     !Number.isInteger(lowStock) ||
     lowStock <= minStock ||
-    !Number.isInteger(currentStock) ||
-    currentStock < 0
+    (!id && (!Number.isInteger(currentStock) || currentStock < 0))
   ) {
     return { error: 'Harga dan batas stok tidak valid. Stok Low harus lebih besar dari stok minimum.' };
   }
@@ -232,11 +231,13 @@ export async function saveProductAction(prevState, formData) {
     if (id) {
       if (!Number.isInteger(id) || id <= 0) return { error: 'Produk tidak valid.' };
       const result = await pool.query(
+        // current_stock sengaja TIDAK diubah di sini: stok hanya berubah lewat
+        // Incoming Approved (+) dan Outgoing Shipped (-).
         `UPDATE products
          SET name = $1, category_id = $2, description = $3, buy_price = $4, sell_price = $5,
-             min_stock = $6, low_stock = $7, current_stock = $8, unit = $9,
-             rack_location = $10, image_url = $11
-         WHERE id = $12`,
+             min_stock = $6, low_stock = $7, unit = $8,
+             rack_location = $9, image_url = $10
+         WHERE id = $11`,
         [
           name,
           categoryId,
@@ -245,7 +246,6 @@ export async function saveProductAction(prevState, formData) {
           sellPrice,
           minStock,
           lowStock,
-          currentStock,
           unit,
           rackLocation,
           imageUrl,
@@ -384,20 +384,23 @@ export async function deleteCategoryAction(categoryId) {
   return { success: 'Kategori berhasil dihapus.' };
 }
 
-export async function verifySupplierAction(supplierId, status) {
+export async function verifySupplierAction(supplierId, status, reason = '') {
   const session = await getSession();
   if (!session || session.role !== 'admin') {
     return { error: 'Hanya Admin yang dapat memverifikasi Supplier.' };
   }
   if (!['approved', 'rejected'].includes(status)) return { error: 'Status Supplier tidak valid.' };
+  const note = typeof reason === 'string' ? reason.trim() : '';
+  if (status === 'rejected' && !note) return { error: 'Alasan penolakan Supplier wajib diisi.' };
 
   const id = Number(supplierId);
   if (!Number.isInteger(id) || id <= 0) return { error: 'Supplier tidak valid.' };
   const result = await pool.query(
     `UPDATE users
-     SET status = $1
-     WHERE id = $2 AND role = 'supplier' AND status = 'pending'`,
-    [status, id]
+     SET status = $1, reject_reason = $3
+     WHERE id = $2 AND role = 'supplier'
+       AND (status = 'pending' OR (status = 'rejected' AND $1 = 'approved'))`,
+    [status, id, status === 'rejected' ? note : null]
   );
   if (result.rowCount === 0) return { error: 'Supplier tidak ditemukan atau sudah diverifikasi.' };
 

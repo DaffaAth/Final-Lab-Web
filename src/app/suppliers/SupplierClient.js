@@ -5,10 +5,16 @@ import { verifySupplierAction } from '@/app/actions/master';
 
 export default function SupplierClient({ suppliers }) {
   const [msg, setMsg] = useState('');
+  const [rejectId, setRejectId] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
 
-  async function handleAction(id, status) {
-    const res = await verifySupplierAction(id, status);
+  async function handleAction(id, status, reason = '') {
+    const res = await verifySupplierAction(id, status, reason);
     setMsg(res.error || res.success);
+    if (res.success) {
+      setRejectId(null);
+      setRejectReason('');
+    }
   }
 
   return (
@@ -62,6 +68,9 @@ export default function SupplierClient({ suppliers }) {
                     >
                       {s.status}
                     </span>
+                    {s.status === 'rejected' && s.reject_reason && (
+                      <p className="text-xs text-red-600 mt-1">Alasan: {s.reject_reason}</p>
+                    )}
                   </td>
                   <td className="p-3.5 text-right space-x-2">
                     {s.status !== 'approved' && (
@@ -72,13 +81,32 @@ export default function SupplierClient({ suppliers }) {
                         Approve
                       </button>
                     )}
-                    {s.status !== 'rejected' && (
+                    {s.status === 'pending' && (
                       <button
-                        onClick={() => handleAction(s.id, 'rejected')}
+                        onClick={() => {
+                          setRejectId(rejectId === s.id ? null : s.id);
+                          setRejectReason('');
+                        }}
                         className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-semibold"
                       >
                         Reject
                       </button>
+                    )}
+                    {rejectId === s.id && (
+                      <div className="mt-2 flex gap-2 justify-end">
+                        <input
+                          value={rejectReason}
+                          onChange={(e) => setRejectReason(e.target.value)}
+                          placeholder="Alasan penolakan (wajib)"
+                          className="px-2 py-1 border border-slate-300 rounded text-xs w-56"
+                        />
+                        <button
+                          onClick={() => handleAction(s.id, 'rejected', rejectReason)}
+                          className="px-3 py-1 bg-red-700 text-white rounded text-xs font-semibold"
+                        >
+                          Kirim
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
