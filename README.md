@@ -1,7 +1,7 @@
-# Sistem Manajemen Gudang — Liberty City Logistics Edition (GTA IV Gritty UI)
+# Sistem Manajemen Gudang
 
 Proyek Final Praktikum Pemrograman Web — Individual Project 6: **Manajemen Gudang**.
-Dibangun menggunakan **Next.js (App Router, JSX)**, **Tailwind CSS (GTA IV Gritty Dark HUD Styling)**, dan **PostgreSQL (`pg` Raw SQL tanpa ORM)**.
+Dibangun menggunakan **Next.js (App Router, JSX)**, **Tailwind CSS **, dan **PostgreSQL (`pg` Raw SQL tanpa ORM)**.
 
 ## Cara Instalasi & Menjalankan
 
