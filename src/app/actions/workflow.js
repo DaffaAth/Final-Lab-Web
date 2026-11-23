@@ -44,7 +44,34 @@ export async function getRestockOrders() {
         FROM restock_order_items roi
         JOIN products p ON p.id = roi.product_id
         WHERE roi.restock_order_id = ro.id), '[]'::json
-      ) AS items
+      ) AS items,
+      (SELECT json_build_object(
+          'id', r.id,
+          'result', r.result,
+          'notes', r.notes,
+          'created_at', r.created_at,
+          'created_by_name', ru.username,
+          'items', COALESCE((
+            SELECT json_agg(json_build_object(
+              'product_id', ri.product_id,
+              'product_name', rp.name,
+              'sku', rp.sku,
+              'unit', rp.unit,
+              'quantity_received', ri.quantity_received,
+              'item_condition', ri.item_condition
+            ) ORDER BY ri.id)
+            FROM inspection_report_items ri
+            JOIN products rp ON rp.id = ri.product_id
+            WHERE ri.report_id = r.id
+          ), '[]'::json)
+        )
+        FROM inspection_reports r
+        JOIN users ru ON ru.id = r.created_by
+        WHERE r.restock_order_id = ro.id) AS report,
+      EXISTS (
+        SELECT 1 FROM transactions t
+        WHERE t.restock_order_id = ro.id AND t.status != 'Rejected'
+      ) AS has_active_incoming
     FROM restock_orders ro
     JOIN users s ON s.id = ro.supplier_id
     JOIN users u ON u.id = ro.created_by
@@ -54,6 +81,11 @@ export async function getRestockOrders() {
   if (session.role === 'supplier') {
     params.push(session.id);
     query += ` WHERE ro.supplier_id = $1`;
+  } else if (session.role === 'staff_gudang') {
+    // Staff hanya melihat PO yang sudah tiba (diperiksa / selesai / dikembalikan)
+    query += ` WHERE ro.status IN ('Inspecting', 'Received', 'Returned')`;
+  } else if (!['admin', 'warehouse_manager'].includes(session.role)) {
+    return [];
   }
 
   query += ` ORDER BY ro.created_at DESC`;
@@ -65,7 +97,7 @@ export async function getAvailableReceivedPOs() {
   const session = await getSession();
   if (!session || session.role !== 'staff_gudang') return [];
 
-  // PO berstatus Inspecting yang belum dipakai transaksi Incoming aktif (selain Rejected)
+  // PO Inspecting dengan laporan pemeriksaan 'Sesuai' yang belum dipakai transaksi Incoming aktif (selain Rejected)
   const res = await pool.query(`
     SELECT ro.id, ro.po_number, ro.supplier_id, s.company_name AS supplier_company, s.username AS supplier_name,
       COALESCE(
@@ -83,6 +115,10 @@ export async function getAvailableReceivedPOs() {
     FROM restock_orders ro
     JOIN users s ON s.id = ro.supplier_id
     WHERE ro.status = 'Inspecting'
+      AND EXISTS (
+        SELECT 1 FROM inspection_reports r
+        WHERE r.restock_order_id = ro.id AND r.result = 'Sesuai'
+      )
       AND NOT EXISTS (
         SELECT 1 FROM transactions t
         WHERE t.restock_order_id = ro.id AND t.status != 'Rejected'
@@ -197,12 +233,29 @@ export async function updateRestockStatusAction(orderId, newStatus, statusNotes 
       return { error: 'Catatan penolakan wajib diisi.' };
     }
   } else if (session.role === 'warehouse_manager') {
-    // Manager hanya memulai pemeriksaan fisik setelah menerima bukti foto kedatangan dari Supplier
-    if (order.status !== 'In Transit' || newStatus !== 'Inspecting') {
+    if (order.status === 'In Transit' && newStatus === 'Inspecting') {
+      // Manager memulai pemeriksaan setelah menerima bukti foto kedatangan dari Supplier
+      if (!order.arrival_photo_url) {
+        return { error: 'Bukti foto kedatangan belum diserahkan Supplier.' };
+      }
+    } else if (order.status === 'Inspecting' && newStatus === 'Returned') {
+      // Barang tidak sesuai / rusak: Manager menolak penerimaan, stok tetap
+      if (!note) return { error: 'Alasan pengembalian (Returned) wajib diisi.' };
+      const reportRes = await pool.query(
+        'SELECT result FROM inspection_reports WHERE restock_order_id = $1',
+        [id]
+      );
+      if (!reportRes.rows[0]) {
+        return { error: 'Laporan pemeriksaan dari Staff Gudang belum dibuat.' };
+      }
+      if (reportRes.rows[0].result !== 'Tidak Sesuai') {
+        return {
+          error:
+            'Laporan pemeriksaan menyatakan barang sesuai. Untuk menolak penerimaan, gunakan Reject pada transaksi Barang Masuk (Incoming).',
+        };
+      }
+    } else {
       return { error: `Perubahan status dari ${order.status} ke ${newStatus} tidak diizinkan.` };
-    }
-    if (!order.arrival_photo_url) {
-      return { error: 'Bukti foto kedatangan belum diserahkan Supplier.' };
     }
   } else {
     return { error: 'Anda tidak memiliki hak mengubah status PO.' };
@@ -220,6 +273,131 @@ export async function updateRestockStatusAction(orderId, newStatus, statusNotes 
   revalidatePath('/transactions');
   revalidatePath('/dashboard');
   return { success: `Status PO ${order.po_number} diperbarui menjadi ${newStatus}.` };
+}
+
+export async function createInspectionReportAction(orderId, items, notes) {
+  const session = await getSession();
+  if (!session || session.role !== 'staff_gudang') {
+    return { error: 'Hanya Staff Gudang yang dapat membuat laporan pemeriksaan.' };
+  }
+  const id = Number(orderId);
+  if (!Number.isInteger(id) || id <= 0) return { error: 'Restock Order tidak valid.' };
+  const reportNotes = typeof notes === 'string' ? notes.trim() : '';
+  if (!reportNotes) return { error: 'Catatan pemeriksaan wajib diisi.' };
+  if (!Array.isArray(items) || items.length === 0) return { error: 'Data pemeriksaan produk wajib diisi.' };
+
+  const received = new Map();
+  for (const it of items) {
+    const productId = Number(it?.product_id);
+    const qty = Number(it?.quantity_received);
+    const condition = it?.item_condition;
+    if (
+      !Number.isInteger(productId) ||
+      productId <= 0 ||
+      !Number.isInteger(qty) ||
+      qty < 0 ||
+      !['Baik', 'Rusak'].includes(condition) ||
+      received.has(productId)
+    ) {
+      return { error: 'Data pemeriksaan tidak valid. Isi jumlah (>= 0) dan kondisi tiap produk.' };
+    }
+    received.set(productId, { qty, condition });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const poRes = await client.query('SELECT id, status FROM restock_orders WHERE id = $1 FOR UPDATE', [id]);
+    const po = poRes.rows[0];
+    if (!po || po.status !== 'Inspecting') {
+      await client.query('ROLLBACK');
+      return { error: 'Laporan hanya dapat dibuat untuk PO berstatus Inspecting.' };
+    }
+    const active = await client.query(
+      `SELECT 1 FROM transactions WHERE restock_order_id = $1 AND status != 'Rejected' LIMIT 1`,
+      [id]
+    );
+    if (active.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return { error: 'PO ini sudah dipakai transaksi Barang Masuk aktif, laporan tidak dapat diubah.' };
+    }
+
+    const poItems = await client.query(
+      'SELECT product_id, quantity FROM restock_order_items WHERE restock_order_id = $1',
+      [id]
+    );
+    if (poItems.rows.length !== received.size) {
+      await client.query('ROLLBACK');
+      return { error: 'Laporan harus mencakup semua produk pada PO.' };
+    }
+
+    // Hasil dihitung otomatis: Sesuai hanya bila semua jumlah sama dan semua kondisi Baik
+    let result = 'Sesuai';
+    for (const row of poItems.rows) {
+      const entry = received.get(row.product_id);
+      if (!entry) {
+        await client.query('ROLLBACK');
+        return { error: 'Laporan harus mencakup semua produk pada PO.' };
+      }
+      if (entry.qty !== row.quantity || entry.condition !== 'Baik') result = 'Tidak Sesuai';
+    }
+
+    await client.query('DELETE FROM inspection_reports WHERE restock_order_id = $1', [id]);
+    const reportRes = await client.query(
+      `INSERT INTO inspection_reports (restock_order_id, created_by, result, notes)
+       VALUES ($1, $2, $3, $4) RETURNING id`,
+      [id, session.id, result, reportNotes]
+    );
+    const reportId = reportRes.rows[0].id;
+    for (const [productId, entry] of received) {
+      await client.query(
+        `INSERT INTO inspection_report_items (report_id, product_id, quantity_received, item_condition)
+         VALUES ($1, $2, $3, $4)`,
+        [reportId, productId, entry.qty, entry.condition]
+      );
+    }
+
+    await client.query('COMMIT');
+    revalidatePath('/restock');
+    revalidatePath('/transactions');
+    revalidatePath('/dashboard');
+    return {
+      success:
+        result === 'Sesuai'
+          ? 'Laporan pemeriksaan disimpan: barang SESUAI. Lanjutkan dengan membuat transaksi Barang Masuk.'
+          : 'Laporan pemeriksaan disimpan: barang TIDAK SESUAI. Menunggu keputusan Manager.',
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Gagal menyimpan laporan pemeriksaan:', error);
+    return { error: 'Gagal menyimpan laporan pemeriksaan.' };
+  } finally {
+    client.release();
+  }
+}
+
+export async function requestRefundAction(orderId, notes) {
+  const session = await getSession();
+  if (!session || session.role !== 'warehouse_manager') {
+    return { error: 'Hanya Warehouse Manager yang dapat mengajukan klaim refund.' };
+  }
+  const id = Number(orderId);
+  if (!Number.isInteger(id) || id <= 0) return { error: 'Restock Order tidak valid.' };
+  const refundNotes = typeof notes === 'string' ? notes.trim() : '';
+  if (!refundNotes) return { error: 'Catatan klaim refund wajib diisi.' };
+
+  const result = await pool.query(
+    `UPDATE restock_orders
+     SET refund_claimed_at = NOW(), refund_notes = $1
+     WHERE id = $2 AND status = 'Returned' AND refund_claimed_at IS NULL`,
+    [refundNotes, id]
+  );
+  if (result.rowCount === 0) {
+    return { error: 'Klaim refund hanya dapat diajukan sekali untuk PO berstatus Returned.' };
+  }
+
+  revalidatePath('/restock');
+  return { success: 'Klaim refund berhasil diajukan kepada Supplier.' };
 }
 
 export async function submitArrivalProofAction(orderId, photoUrl) {
@@ -346,7 +524,7 @@ export async function createTransactionAction(prevState, formData) {
     !['incoming', 'outgoing'].includes(type) ||
     !/^\d{4}-\d{2}-\d{2}$/.test(transaction_date || '') ||
     !notes ||
-    !items ||
+    (type === 'outgoing' && !items) ||
     (restock_order_id !== null && (!Number.isInteger(restock_order_id) || restock_order_id <= 0))
   ) {
     return { error: 'Jenis transaksi, tanggal, catatan, dan minimal 1 produk wajib diisi.' };
@@ -354,8 +532,8 @@ export async function createTransactionAction(prevState, formData) {
   if (type === 'outgoing' && restock_order_id) {
     return { error: 'Restock Order hanya dapat dipakai untuk transaksi Barang Masuk.' };
   }
-  if (type === 'incoming' && !restock_order_id && (!Number.isInteger(supplier_id) || supplier_id <= 0)) {
-    return { error: 'Supplier wajib dipilih untuk transaksi Barang Masuk.' };
+  if (type === 'incoming' && !restock_order_id) {
+    return { error: 'Barang Masuk wajib berdasarkan Restock Order (PO) berstatus Inspecting.' };
   }
   if (type === 'outgoing' && !customer_name) {
     return { error: 'Nama customer/tujuan wajib diisi untuk transaksi Barang Keluar.' };
@@ -391,6 +569,30 @@ export async function createTransactionAction(prevState, formData) {
         return { error: 'Restock Order ini sudah dipakai pada transaksi aktif lain.' };
       }
       supplier_id = order.supplier_id;
+
+      // Laporan pemeriksaan wajib ada dan menyatakan barang Sesuai
+      const reportRes = await client.query(
+        'SELECT result FROM inspection_reports WHERE restock_order_id = $1',
+        [restock_order_id]
+      );
+      if (!reportRes.rows[0]) {
+        await client.query('ROLLBACK');
+        return { error: 'Laporan pemeriksaan untuk PO ini belum dibuat.' };
+      }
+      if (reportRes.rows[0].result !== 'Sesuai') {
+        await client.query('ROLLBACK');
+        return {
+          error:
+            'Laporan pemeriksaan menyatakan barang tidak sesuai/rusak. Transaksi Barang Masuk tidak dapat dibuat; Manager akan memproses pengembalian.',
+        };
+      }
+
+      // Daftar produk & kuantitas diambil otomatis dari PO (bukan dari input form)
+      const poItemsRes = await client.query(
+        'SELECT product_id, quantity FROM restock_order_items WHERE restock_order_id = $1 ORDER BY product_id ASC',
+        [restock_order_id]
+      );
+      items = poItemsRes.rows.map((r) => ({ product_id: r.product_id, quantity: r.quantity }));
     }
 
     if (type === 'incoming') {
@@ -474,6 +676,18 @@ export async function editPendingTransactionAction(transactionId, notes, items) 
     if (trx.created_by !== session.id) {
       await client.query('ROLLBACK');
       return { error: 'Staff hanya dapat mengedit transaksi yang dibuatnya sendiri.' };
+    }
+
+    // Barang Masuk: daftar produk & kuantitas mengikuti PO, hanya catatan yang dapat diubah
+    if (trx.type === 'incoming') {
+      if (!updatedNotes) {
+        await client.query('ROLLBACK');
+        return { error: 'Catatan wajib diisi.' };
+      }
+      await client.query('UPDATE transactions SET notes = $1 WHERE id = $2', [updatedNotes, id]);
+      await client.query('COMMIT');
+      revalidatePath('/transactions');
+      return { success: 'Catatan transaksi berhasil diperbarui (produk mengikuti PO).' };
     }
 
     if (trx.type === 'outgoing') {
@@ -616,10 +830,19 @@ export async function reviewTransactionAction(transactionId, decision, rejectRea
         `UPDATE transactions SET status = 'Rejected', reject_reason = $1 WHERE id = $2`,
         [reason, id]
       );
+      // Penerimaan ditolak: PO menjadi Returned, stok tetap
+      if (trx.type === 'incoming' && trx.restock_order_id) {
+        await client.query(
+          `UPDATE restock_orders SET status = 'Returned', status_notes = $1
+           WHERE id = $2 AND status = 'Inspecting'`,
+          [reason, trx.restock_order_id]
+        );
+      }
     }
 
     await client.query('COMMIT');
     revalidatePath('/transactions');
+    revalidatePath('/restock');
     revalidatePath('/products');
     revalidatePath('/dashboard');
     return {
@@ -628,7 +851,9 @@ export async function reviewTransactionAction(transactionId, decision, rejectRea
           ? trx.type === 'incoming'
             ? `Transaksi ${trx.transaction_number} disetujui & stok otomatis bertambah.`
             : `Transaksi ${trx.transaction_number} disetujui. Stok baru berkurang setelah barang dikirim (Shipped).`
-          : `Transaksi ${trx.transaction_number} ditolak.`,
+          : trx.type === 'incoming'
+            ? `Transaksi ${trx.transaction_number} ditolak. PO dikembalikan (Returned), stok tetap.`
+            : `Transaksi ${trx.transaction_number} ditolak.`,
     };
   } catch (error) {
     await client.query('ROLLBACK');
@@ -787,6 +1012,10 @@ export async function getDashboardData() {
           (SELECT COUNT(*)::int
            FROM restock_orders ro
            WHERE ro.status = 'Inspecting'
+             AND EXISTS (
+               SELECT 1 FROM inspection_reports r
+               WHERE r.restock_order_id = ro.id AND r.result = 'Sesuai'
+             )
              AND NOT EXISTS (
                SELECT 1
                FROM transactions t

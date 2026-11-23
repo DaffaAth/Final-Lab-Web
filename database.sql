@@ -19,7 +19,7 @@ CREATE TABLE categories (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 3. Tabel Products (Master Produk; Status Stok dihitung otomatis lewat query)
+-- 3. Tabel Products (Master Produk; Status Stok dihDitung otomatis lewat query)
 CREATE TABLE products (
     id SERIAL PRIMARY KEY,
     sku VARCHAR(50) UNIQUE NOT NULL,
@@ -90,3 +90,27 @@ INSERT INTO users (username, email, password, role, status) VALUES
 ('Admin Gudang', 'admin@gudang.com', 'admin123', 'admin', 'approved'),
 ('Budi Manager', 'manager@gudang.com', 'manager123', 'warehouse_manager', 'approved'),
 ('Andi Staff', 'staff@gudang.com', 'staff123', 'staff_gudang', 'approved');
+
+
+
+--laporan pemeriksaan + klaim refund
+
+CREATE TABLE IF NOT EXISTS inspection_reports (
+    id SERIAL PRIMARY KEY,
+    restock_order_id INT NOT NULL UNIQUE REFERENCES restock_orders(id) ON DELETE CASCADE,
+    created_by INT NOT NULL REFERENCES users(id),
+    result VARCHAR(20) NOT NULL CHECK (result IN ('Sesuai', 'Tidak Sesuai')),
+    notes TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS inspection_report_items (
+    id SERIAL PRIMARY KEY,
+    report_id INT NOT NULL REFERENCES inspection_reports(id) ON DELETE CASCADE,
+    product_id INT NOT NULL REFERENCES products(id),
+    quantity_received INT NOT NULL CHECK (quantity_received >= 0),
+    item_condition VARCHAR(10) NOT NULL CHECK (item_condition IN ('Baik', 'Rusak'))
+);
+
+ALTER TABLE restock_orders ADD COLUMN IF NOT EXISTS refund_claimed_at TIMESTAMP;
+ALTER TABLE restock_orders ADD COLUMN IF NOT EXISTS refund_notes TEXT;

@@ -259,15 +259,20 @@ export default function TransactionClient({ session, transactions, suppliers, pr
               <>
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    Referensi PO Inspecting (Opsional)
+                    Referensi PO Inspecting (Laporan Sesuai) *
                   </label>
                   <select
                     name="restock_order_id"
                     value={selectedPO}
                     onChange={(e) => handlePOChange(e.target.value)}
+                    required
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
                   >
-                    <option value="">-- Input Manual Tanpa PO --</option>
+                    <option value="">
+                      {receivedPOs.length === 0
+                        ? '-- Belum ada PO dengan laporan pemeriksaan Sesuai --'
+                        : '-- Pilih PO --'}
+                    </option>
                     {receivedPOs.map((po) => (
                       <option key={po.id} value={po.id}>
                         {po.po_number} - {po.supplier_company}
@@ -277,14 +282,13 @@ export default function TransactionClient({ session, transactions, suppliers, pr
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Supplier *</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Supplier (otomatis dari PO)</label>
                   {selectedPO && <input type="hidden" name="supplier_id" value={selectedSupplier} />}
                   <select
                     name={selectedPO ? undefined : 'supplier_id'}
                     value={selectedSupplier}
                     onChange={(e) => setSelectedSupplier(e.target.value)}
-                    required
-                    disabled={Boolean(selectedPO)}
+                    disabled
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
                   >
                     <option value="">-- Pilih Supplier --</option>
@@ -326,9 +330,11 @@ export default function TransactionClient({ session, transactions, suppliers, pr
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold text-slate-600">Daftar Barang *</label>
-              <button type="button" onClick={addRow} className="text-xs font-semibold text-blue-600 hover:underline">
-                + Tambah Produk
-              </button>
+              {trxType === 'outgoing' && (
+                <button type="button" onClick={addRow} className="text-xs font-semibold text-blue-600 hover:underline">
+                  + Tambah Produk
+                </button>
+              )}
             </div>
             {items.map((item, idx) => (
               <div key={idx} className="flex gap-2">
@@ -336,6 +342,7 @@ export default function TransactionClient({ session, transactions, suppliers, pr
                   value={item.product_id}
                   onChange={(e) => updateRow(idx, 'product_id', e.target.value)}
                   required
+                  disabled={trxType === 'incoming'}
                   className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
                 >
                   <option value="">-- Pilih Produk --</option>
@@ -351,9 +358,10 @@ export default function TransactionClient({ session, transactions, suppliers, pr
                   value={item.quantity}
                   onChange={(e) => updateRow(idx, 'quantity', e.target.value)}
                   required
+                  readOnly={trxType === 'incoming'}
                   className="w-28 px-3 py-2 border border-slate-300 rounded-lg text-sm"
                 />
-                {items.length > 1 && (
+                {items.length > 1 && trxType === 'outgoing' && (
                   <button
                     type="button"
                     onClick={() => removeRow(idx)}
@@ -399,6 +407,7 @@ export default function TransactionClient({ session, transactions, suppliers, pr
                   copy[idx].product_id = e.target.value;
                   setEditItems(copy);
                 }}
+                disabled={editingTrx.type === 'incoming'}
                 className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
               >
                 {products.map((p) => (
@@ -416,6 +425,7 @@ export default function TransactionClient({ session, transactions, suppliers, pr
                   copy[idx].quantity = e.target.value;
                   setEditItems(copy);
                 }}
+                readOnly={editingTrx.type === 'incoming'}
                 className="w-28 px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
               />
             </div>

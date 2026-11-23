@@ -31,6 +31,7 @@ const NAV_BY_ROLE = {
   staff_gudang: [
     { href: '/dashboard', label: 'Dashboard' },
     { href: '/products', label: 'Katalog & Stok Produk' },
+    { href: '/restock', label: 'Pemeriksaan Barang (PO)' },
     { href: '/transactions', label: 'Barang Masuk & Keluar' },
   ],
   supplier: [

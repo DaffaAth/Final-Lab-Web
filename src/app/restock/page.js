@@ -8,7 +8,6 @@ import RestockClient from './RestockClient';
 export default async function RestockPage({ searchParams }) {
   const session = await getSession();
   if (!session) redirect('/login');
-  if (session.role === 'staff_gudang') redirect('/dashboard');
   const params = await searchParams;
   const suggestedProductId = params?.productId || '';
 

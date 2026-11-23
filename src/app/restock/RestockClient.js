@@ -5,6 +5,8 @@ import {
   createRestockOrderAction,
   updateRestockStatusAction,
   submitArrivalProofAction,
+  createInspectionReportAction,
+  requestRefundAction,
 } from '@/app/actions/workflow';
 
 const RESTOCK_STEPS = ['Pending', 'Confirmed', 'In Transit', 'Inspecting', 'Received'];
@@ -12,6 +14,7 @@ const RESTOCK_STEPS = ['Pending', 'Confirmed', 'In Transit', 'Inspecting', 'Rece
 export default function RestockClient({ session, orders, suppliers, products, suggestedProductId }) {
   const isManager = session.role === 'warehouse_manager';
   const isSupplier = session.role === 'supplier';
+  const isStaff = session.role === 'staff_gudang';
 
   const [state, formAction, isPending] = useActionState(createRestockOrderAction, null);
   const [items, setItems] = useState([{ product_id: String(suggestedProductId || ''), quantity: 1 }]);
@@ -19,6 +22,11 @@ export default function RestockClient({ session, orders, suppliers, products, su
   const [rejectId, setRejectId] = useState(null);
   const [rejectNote, setRejectNote] = useState('');
   const [proofUrls, setProofUrls] = useState({});
+  const [msgError, setMsgError] = useState(false);
+  const [reports, setReports] = useState({});
+  const [returnId, setReturnId] = useState(null);
+  const [returnNote, setReturnNote] = useState('');
+  const [refundNotes, setRefundNotes] = useState({});
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -37,18 +45,67 @@ export default function RestockClient({ session, orders, suppliers, products, su
     setItems(items.filter((_, i) => i !== idx));
   }
 
+  function showResult(res) {
+    setMsg(res.error || res.success || '');
+    setMsgError(Boolean(res.error));
+  }
+
+  // --- Laporan pemeriksaan (Staff Gudang) ---
+  function reportFor(po) {
+    return (
+      reports[po.id] || {
+        notes: '',
+        items: (po.items || []).map((it) => ({
+          product_id: it.product_id,
+          quantity_received: it.quantity,
+          item_condition: 'Baik',
+        })),
+      }
+    );
+  }
+
+  function setReportItem(po, idx, field, value) {
+    const cur = reportFor(po);
+    const nextItems = cur.items.map((x, i) => (i === idx ? { ...x, [field]: value } : x));
+    setReports({ ...reports, [po.id]: { ...cur, items: nextItems } });
+  }
+
+  function setReportNotes(po, value) {
+    const cur = reportFor(po);
+    setReports({ ...reports, [po.id]: { ...cur, notes: value } });
+  }
+
+  async function handleReportSubmit(po) {
+    const form = reportFor(po);
+    const res = await createInspectionReportAction(po.id, form.items, form.notes);
+    showResult(res);
+    if (res.success) {
+      const copy = { ...reports };
+      delete copy[po.id];
+      setReports(copy);
+    }
+  }
+
+  async function handleRefund(orderId) {
+    const res = await requestRefundAction(orderId, refundNotes[orderId] || '');
+    showResult(res);
+    if (res.success) setRefundNotes((prev) => ({ ...prev, [orderId]: '' }));
+  }
+
   async function handleStatusChange(orderId, newStatus, note = '') {
     const res = await updateRestockStatusAction(orderId, newStatus, note);
-    setMsg(res.error || res.success);
+    showResult(res);
     if (res.success) {
       setRejectId(null);
       setRejectNote('');
+      setReturnId(null);
+      setReturnNote('');
     }
   }
 
   async function handleProofSubmit(orderId) {
     const res = await submitArrivalProofAction(orderId, proofUrls[orderId] || '');
-    setMsg(res.error || res.success);
+    showResult(res);
     if (res.success) setProofUrls((prev) => ({ ...prev, [orderId]: '' }));
   }
 
@@ -57,14 +114,14 @@ export default function RestockClient({ session, orders, suppliers, products, su
       <div>
         <h1 className="text-2xl font-bold text-slate-800">Restock Order (Purchase Order)</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Alur pengadaan stok: Manager Buat PO → Supplier Konfirmasi → Supplier Kirim (In Transit) → Manager/Staff Periksa (Inspecting) → Received/Returned
+          Alur pengadaan stok: Manager Buat PO → Supplier Konfirmasi → Supplier Kirim (In Transit) → Staff Periksa (Inspecting) → Manager putuskan Received/Returned
         </p>
       </div>
 
       {(state?.error || state?.success || msg) && (
         <div
           className={`p-3 rounded-lg text-sm border ${
-            state?.error || msg.includes('wajib') || msg.includes('tidak') || msg.includes('belum')
+            state?.error || msgError
               ? 'bg-red-50 border-red-200 text-red-700'
               : 'bg-emerald-50 border-emerald-200 text-emerald-700'
           }`}
@@ -254,6 +311,31 @@ export default function RestockClient({ session, orders, suppliers, products, su
                     </a>
                   </p>
                 )}
+                {po.report && (
+                  <div
+                    className={`mt-2 p-3 rounded-lg border space-y-1 ${
+                      po.report.result === 'Sesuai'
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                        : 'bg-red-50 border-red-200 text-red-800'
+                    }`}
+                  >
+                    <p className="font-semibold">
+                      Laporan Pemeriksaan: {po.report.result} (oleh {po.report.created_by_name})
+                    </p>
+                    <ul className="list-disc pl-5">
+                      {(po.report.items || []).map((it) => {
+                        const ordered = (po.items || []).find((x) => x.product_id === it.product_id);
+                        return (
+                          <li key={it.product_id}>
+                            [{it.sku}] {it.product_name}: diterima {it.quantity_received} dari{' '}
+                            {ordered?.quantity ?? '-'} {it.unit} — {it.item_condition}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <p>Catatan: {po.report.notes}</p>
+                  </div>
+                )}
               </div>
 
               {/* Aksi Supplier */}
@@ -339,10 +421,146 @@ export default function RestockClient({ session, orders, suppliers, products, su
                   )}
                 </div>
               )}
-              {po.status === 'Inspecting' && (isManager || isSupplier) && (
+              {/* Inspecting: pemeriksaan fisik oleh Staff Gudang */}
+              {po.status === 'Inspecting' && isSupplier && (
                 <p className="pt-2 text-xs text-slate-500">
                   Barang sedang diperiksa Staff Gudang. Menunggu keputusan Manager (Received/Returned).
                 </p>
+              )}
+
+              {isStaff && po.status === 'Inspecting' && !po.has_active_incoming && (() => {
+                const form = reportFor(po);
+                return (
+                  <div className="pt-3 space-y-2 border-t border-slate-100">
+                    <p className="text-xs font-semibold text-slate-700">
+                      {po.report ? 'Perbarui Laporan Pemeriksaan' : 'Buat Laporan Pemeriksaan Fisik Barang'}
+                    </p>
+                    {(po.items || []).map((it, idx) => (
+                      <div key={it.product_id} className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="flex-1 min-w-[10rem]">
+                          [{it.sku}] {it.product_name} (dipesan {it.quantity} {it.unit})
+                        </span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={form.items[idx].quantity_received}
+                          onChange={(e) => setReportItem(po, idx, 'quantity_received', e.target.value)}
+                          className="w-24 px-2 py-1.5 border border-slate-300 rounded-lg"
+                          aria-label={`Jumlah diterima ${it.product_name}`}
+                        />
+                        <select
+                          value={form.items[idx].item_condition}
+                          onChange={(e) => setReportItem(po, idx, 'item_condition', e.target.value)}
+                          className="px-2 py-1.5 border border-slate-300 rounded-lg bg-white"
+                          aria-label={`Kondisi ${it.product_name}`}
+                        >
+                          <option value="Baik">Baik</option>
+                          <option value="Rusak">Rusak</option>
+                        </select>
+                      </div>
+                    ))}
+                    <input
+                      type="text"
+                      value={form.notes}
+                      onChange={(e) => setReportNotes(po, e.target.value)}
+                      placeholder="Catatan pemeriksaan (wajib)..."
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs"
+                    />
+                    <button
+                      onClick={() => handleReportSubmit(po)}
+                      className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold"
+                    >
+                      Simpan Laporan Pemeriksaan
+                    </button>
+                  </div>
+                );
+              })()}
+              {isStaff && po.status === 'Inspecting' && po.report?.result === 'Sesuai' && !po.has_active_incoming && (
+                <p className="text-xs text-emerald-700">
+                  Barang sesuai. Lanjutkan dengan membuat transaksi Barang Masuk dari PO ini di menu
+                  &quot;Barang Masuk &amp; Keluar&quot;.
+                </p>
+              )}
+              {isStaff && po.status === 'Inspecting' && po.has_active_incoming && (
+                <p className="text-xs text-slate-500">
+                  Transaksi Barang Masuk untuk PO ini sudah dibuat dan menunggu keputusan Manager.
+                </p>
+              )}
+
+              {/* Inspecting: keputusan Manager */}
+              {isManager && po.status === 'Inspecting' && !po.report && (
+                <p className="pt-2 text-xs text-amber-700">Menunggu laporan pemeriksaan dari Staff Gudang.</p>
+              )}
+              {isManager && po.status === 'Inspecting' && po.report?.result === 'Sesuai' && (
+                <p className="pt-2 text-xs text-slate-500">
+                  Barang sesuai. Menunggu transaksi Barang Masuk dari Staff, lalu Approve/Reject di menu
+                  Approval Transaksi.
+                </p>
+              )}
+              {isManager && po.status === 'Inspecting' && po.report?.result === 'Tidak Sesuai' && (
+                <div className="pt-2 space-y-2">
+                  <button
+                    onClick={() => {
+                      setReturnId(returnId === po.id ? null : po.id);
+                      setReturnNote('');
+                    }}
+                    className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold"
+                  >
+                    Tolak Penerimaan (Returned)
+                  </button>
+                  {returnId === po.id && (
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={returnNote}
+                        onChange={(e) => setReturnNote(e.target.value)}
+                        placeholder="Alasan pengembalian..."
+                        className="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-xs"
+                      />
+                      <button
+                        onClick={() => handleStatusChange(po.id, 'Returned', returnNote)}
+                        className="px-3 py-1.5 bg-red-700 text-white rounded-lg text-xs font-semibold"
+                      >
+                        Kirim Penolakan
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Returned: klaim refund */}
+              {po.status === 'Returned' && (
+                <div className="pt-2 space-y-2 text-xs">
+                  {po.refund_claimed_at ? (
+                    <p className="text-amber-700">
+                      Klaim refund diajukan kepada Supplier pada{' '}
+                      {new Date(po.refund_claimed_at).toLocaleDateString('id-ID')}: {po.refund_notes}
+                    </p>
+                  ) : (
+                    isManager && (
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={refundNotes[po.id] || ''}
+                          onChange={(e) => setRefundNotes({ ...refundNotes, [po.id]: e.target.value })}
+                          placeholder="Catatan klaim refund (wajib)..."
+                          className="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-xs"
+                        />
+                        <button
+                          onClick={() => handleRefund(po.id)}
+                          className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold"
+                        >
+                          Ajukan Klaim Refund
+                        </button>
+                      </div>
+                    )
+                  )}
+                  {isManager && (
+                    <p className="text-slate-500">
+                      Stok tidak bertambah. Buat Restock Order baru di atas bila stok masih dibutuhkan.
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           ))
