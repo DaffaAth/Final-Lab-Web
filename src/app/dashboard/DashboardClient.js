@@ -68,6 +68,14 @@ export default function DashboardClient({ session, data }) {
                 {data.stats.pending_suppliers_count}
               </p>
             </div>
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">PO Berjalan</p>
+              <p className="text-2xl font-bold text-blue-600 mt-1">{data.stats.po_active_count ?? 0}</p>
+            </div>
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">PO Dikembalikan (Returned)</p>
+              <p className="text-2xl font-bold text-red-600 mt-1">{data.stats.po_returned_count ?? 0}</p>
+            </div>
           </div>
 
           {/* Quick Access */}
@@ -206,6 +214,14 @@ export default function DashboardClient({ session, data }) {
                 {formatRupiah(data.stats.inventory_value)}
               </p>
             </div>
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">PO Menunggu Keputusan (Tidak Sesuai)</p>
+              <p className="text-2xl font-bold text-red-600 mt-1">{data.stats.po_awaiting_decision_count ?? 0}</p>
+            </div>
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">PO Returned Belum Klaim Refund</p>
+              <p className="text-2xl font-bold text-amber-600 mt-1">{data.stats.po_refund_pending_count ?? 0}</p>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -292,6 +308,10 @@ export default function DashboardClient({ session, data }) {
               <p className="text-xs font-semibold text-slate-500 uppercase">PO Diperiksa Siap Dicatat</p>
               <p className="text-2xl font-bold text-emerald-600 mt-1">{data.stats.received_po_count}</p>
             </div>
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">PO Menunggu Pemeriksaan</p>
+              <p className="text-2xl font-bold text-red-600 mt-1">{data.stats.awaiting_inspection_count ?? 0}</p>
+            </div>
           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
@@ -339,6 +359,14 @@ export default function DashboardClient({ session, data }) {
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
               <p className="text-xs font-semibold text-slate-500 uppercase">PO Diterima Gudang</p>
               <p className="text-2xl font-bold text-emerald-600 mt-1">{data.stats.completed_po_count}</p>
+            </div>
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">PO Dikembalikan (Returned)</p>
+              <p className="text-2xl font-bold text-red-600 mt-1">{data.stats.returned_po_count ?? 0}</p>
+            </div>
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase">Klaim Refund Diterima</p>
+              <p className="text-2xl font-bold text-amber-600 mt-1">{data.stats.refund_claim_count ?? 0}</p>
             </div>
           </div>
 
