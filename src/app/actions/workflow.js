@@ -939,7 +939,9 @@ export async function getDashboardData() {
           (SELECT COUNT(*)::int FROM products) AS total_products,
           (SELECT COUNT(*)::int FROM transactions WHERE DATE_TRUNC('month', transaction_date) = DATE_TRUNC('month', CURRENT_DATE)) AS monthly_transactions,
           (SELECT COALESCE(SUM(buy_price * current_stock), 0)::numeric FROM products) AS inventory_value,
-          (SELECT COUNT(*)::int FROM users WHERE role = 'supplier' AND status = 'pending') AS pending_suppliers_count
+          (SELECT COUNT(*)::int FROM users WHERE role = 'supplier' AND status = 'pending') AS pending_suppliers_count,
+          (SELECT COUNT(*)::int FROM restock_orders WHERE status IN ('Pending', 'Confirmed', 'In Transit', 'Inspecting')) AS po_active_count,
+          (SELECT COUNT(*)::int FROM restock_orders WHERE status = 'Returned') AS po_returned_count
       `),
       pool.query(`
         SELECT id, username, company_name, email, created_at
@@ -971,7 +973,12 @@ export async function getDashboardData() {
           (SELECT COALESCE(SUM(current_stock), 0)::int FROM products) AS total_stock_units,
           (SELECT COUNT(*)::int FROM transactions WHERE status = 'Pending') AS pending_transactions_count,
           (SELECT COUNT(*)::int FROM restock_orders WHERE status IN ('Pending', 'Confirmed', 'In Transit', 'Inspecting')) AS active_po_count,
-          (SELECT COALESCE(SUM(buy_price * current_stock), 0)::numeric FROM products) AS inventory_value
+          (SELECT COALESCE(SUM(buy_price * current_stock), 0)::numeric FROM products) AS inventory_value,
+          (SELECT COUNT(*)::int
+           FROM restock_orders ro
+           JOIN inspection_reports r ON r.restock_order_id = ro.id
+           WHERE ro.status = 'Inspecting' AND r.result = 'Tidak Sesuai') AS po_awaiting_decision_count,
+          (SELECT COUNT(*)::int FROM restock_orders WHERE status = 'Returned' AND refund_claimed_at IS NULL) AS po_refund_pending_count
       `),
       pool.query(`
         SELECT t.id, t.transaction_number, t.type, t.transaction_date, u.username AS created_by_name
@@ -1020,7 +1027,13 @@ export async function getDashboardData() {
                SELECT 1
                FROM transactions t
                WHERE t.restock_order_id = ro.id AND t.status != 'Rejected'
-             )) AS received_po_count
+             )) AS received_po_count,
+          (SELECT COUNT(*)::int
+           FROM restock_orders ro
+           WHERE ro.status = 'Inspecting'
+             AND NOT EXISTS (
+               SELECT 1 FROM inspection_reports r WHERE r.restock_order_id = ro.id
+             )) AS awaiting_inspection_count
       `),
       pool.query(`
         SELECT t.id, t.transaction_number, t.type, t.transaction_date, t.status, u.username AS created_by_name
@@ -1046,7 +1059,9 @@ export async function getDashboardData() {
       `SELECT
         (SELECT COUNT(*)::int FROM restock_orders WHERE supplier_id = $1 AND status = 'Pending') AS pending_po_count,
         (SELECT COUNT(*)::int FROM restock_orders WHERE supplier_id = $1 AND status IN ('Confirmed', 'In Transit', 'Inspecting')) AS ongoing_po_count,
-        (SELECT COUNT(*)::int FROM restock_orders WHERE supplier_id = $1 AND status = 'Received') AS completed_po_count`,
+        (SELECT COUNT(*)::int FROM restock_orders WHERE supplier_id = $1 AND status = 'Received') AS completed_po_count,
+        (SELECT COUNT(*)::int FROM restock_orders WHERE supplier_id = $1 AND status = 'Returned') AS returned_po_count,
+        (SELECT COUNT(*)::int FROM restock_orders WHERE supplier_id = $1 AND status = 'Returned' AND refund_claimed_at IS NOT NULL) AS refund_claim_count`,
       [session.id]
     ),
     pool.query(

@@ -12,7 +12,7 @@ export default function RegisterPage() {
       <div className="w-full max-w-md bg-[#141619] border-2 border-[#2c3036] shadow-[0_20px_50px_rgba(0,0,0,0.85)] p-8">
         <div className="border-b-2 border-[#2c3036] pb-5 mb-6">
           <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#d49b27]">
-            VENDOR REGISTRATION DOSSIER
+            VENDOR REGISTRATION
           </span>
           <h1 className="text-2xl font-black uppercase tracking-wider text-[#e8e6e1] mt-1">
             REGISTRASI SUPPLIER
