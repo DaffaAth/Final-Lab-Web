@@ -185,7 +185,6 @@ export async function saveProductAction(prevState, formData) {
   const sellPrice = Number(formData.get('sell_price'));
   const minStock = Number(formData.get('min_stock'));
   const lowStock = Number(formData.get('low_stock'));
-  const currentStock = Number(formData.get('current_stock'));
   const unit = formData.get('unit')?.trim();
   const rackLocation = formData.get('rack_location')?.trim();
   const imageUrl = formData.get('image_url')?.trim();
@@ -221,8 +220,7 @@ export async function saveProductAction(prevState, formData) {
     !Number.isInteger(minStock) ||
     minStock < 0 ||
     !Number.isInteger(lowStock) ||
-    lowStock <= minStock ||
-    (!id && (!Number.isInteger(currentStock) || currentStock < 0))
+    lowStock <= minStock
   ) {
     return { error: 'Harga dan batas stok tidak valid. Stok Low harus lebih besar dari stok minimum.' };
   }
@@ -268,7 +266,7 @@ export async function saveProductAction(prevState, formData) {
           sellPrice,
           minStock,
           lowStock,
-          currentStock,
+          0, // stok awal selalu 0: stok hanya bertambah lewat Incoming (Approved)
           unit,
           rackLocation,
           imageUrl,
