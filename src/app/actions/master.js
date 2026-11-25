@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import pool from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { saveUploadedImage, isLocalUploadUrl } from '@/lib/upload';
 
 const INTERNAL_ROLES = ['admin', 'warehouse_manager', 'staff_gudang'];
 const MANAGEMENT_ROLES = ['admin', 'warehouse_manager'];
@@ -187,9 +188,16 @@ export async function saveProductAction(prevState, formData) {
   const lowStock = Number(formData.get('low_stock'));
   const unit = formData.get('unit')?.trim();
   const rackLocation = formData.get('rack_location')?.trim();
-  const imageUrl = formData.get('image_url')?.trim();
+  // Gambar: file upload (dari perangkat) diutamakan; bila tidak ada, pakai URL web / gambar lama.
+  let imageUrl = formData.get('image_url')?.trim();
+  try {
+    const uploadedPath = await saveUploadedImage(formData.get('image_file'));
+    if (uploadedPath) imageUrl = uploadedPath;
+  } catch (error) {
+    return { error: error.message };
+  }
   let image = null;
-  if (imageUrl) {
+  if (imageUrl && !isLocalUploadUrl(imageUrl)) {
     try {
       image = new URL(imageUrl);
     } catch {
@@ -207,8 +215,7 @@ export async function saveProductAction(prevState, formData) {
     !unit ||
     !rackLocation ||
     !imageUrl ||
-    !image ||
-    !['http:', 'https:'].includes(image.protocol)
+    (!isLocalUploadUrl(imageUrl) && (!image || !['http:', 'https:'].includes(image.protocol)))
   ) {
     return { error: 'Semua field produk wajib diisi dengan data yang valid.' };
   }
@@ -323,10 +330,16 @@ export async function saveCategoryAction(prevState, formData) {
   const id = idValue ? Number(idValue) : null;
   const name = formData.get('name')?.trim();
   const description = formData.get('description')?.trim() || null;
-  const imageUrl = formData.get('image_url')?.trim() || null;
+  let imageUrl = formData.get('image_url')?.trim() || null;
+  try {
+    const uploadedPath = await saveUploadedImage(formData.get('image_file'));
+    if (uploadedPath) imageUrl = uploadedPath;
+  } catch (error) {
+    return { error: error.message };
+  }
   if (!name) return { error: 'Nama kategori wajib diisi.' };
   if (idValue && (!Number.isInteger(id) || id <= 0)) return { error: 'Kategori tidak valid.' };
-  if (imageUrl) {
+  if (imageUrl && !isLocalUploadUrl(imageUrl)) {
     try {
       const image = new URL(imageUrl);
       if (!['http:', 'https:'].includes(image.protocol)) return { error: 'URL gambar kategori tidak valid.' };
