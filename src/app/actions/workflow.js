@@ -1,6 +1,5 @@
 'use server';
 
-import { randomUUID } from 'node:crypto';
 import pool from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { revalidatePath } from 'next/cache';
@@ -622,15 +621,20 @@ export async function createTransactionAction(prevState, formData) {
       }
     }
 
-    const prefix = type === 'incoming' ? 'TRX-IN' : 'TRX-OUT';
-    const trxNumber = `${prefix}-${randomUUID()}`;
-
-    const trxRes = await client.query(
-      `INSERT INTO transactions (transaction_number, type, transaction_date, restock_order_id, supplier_id, customer_name, created_by, notes, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pending') RETURNING id`,
-      [trxNumber, type, transaction_date, restock_order_id, supplier_id, customer_name, session.id, notes]
+    // Nomor transaksi otomatis & singkat, mengikuti urutan id (sama seperti nomor PO)
+    // Contoh: TRX-IN-000012 / TRX-OUT-000013
+    const idResult = await client.query(
+      `SELECT nextval(pg_get_serial_sequence('transactions', 'id')) AS id`
     );
-    const trxId = trxRes.rows[0].id;
+    const trxId = Number(idResult.rows[0].id);
+    const prefix = type === 'incoming' ? 'TRX-IN' : 'TRX-OUT';
+    const trxNumber = `${prefix}-${String(trxId).padStart(6, '0')}`;
+
+    await client.query(
+      `INSERT INTO transactions (id, transaction_number, type, transaction_date, restock_order_id, supplier_id, customer_name, created_by, notes, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'Pending')`,
+      [trxId, trxNumber, type, transaction_date, restock_order_id, supplier_id, customer_name, session.id, notes]
+    );
 
     for (const item of items) {
       await client.query(
