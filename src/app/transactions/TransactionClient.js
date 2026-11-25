@@ -137,33 +137,36 @@ export default function TransactionClient({ session, transactions, suppliers, pr
         ))}
       </div>
 
-      <form method="GET" className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+      <form
+        method="GET"
+        className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center gap-3 w-full max-w-full min-w-0"
+      >
         <input type="hidden" name="type" value={filters.type} />
         <input
           type="text"
           name="party"
           defaultValue={filters.party}
           placeholder="Supplier / customer"
-          className="px-3 py-2 border border-slate-300 rounded-lg text-sm lg:col-span-2"
+          className="flex-[2_1_14rem] min-w-0 px-3 py-2 border border-slate-300 rounded-lg text-sm"
         />
         <input
           type="date"
           name="dateFrom"
           aria-label="Tanggal mulai"
           defaultValue={filters.dateFrom}
-          className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+          className="flex-[1_1_9.5rem] min-w-0 px-3 py-2 border border-slate-300 rounded-lg text-sm"
         />
         <input
           type="date"
           name="dateTo"
           aria-label="Tanggal sampai"
           defaultValue={filters.dateTo}
-          className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+          className="flex-[1_1_9.5rem] min-w-0 px-3 py-2 border border-slate-300 rounded-lg text-sm"
         />
         <select
           name="status"
           defaultValue={filters.status}
-          className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+          className="flex-[1_1_9.5rem] min-w-0 px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
         >
           <option value="">Semua Status</option>
           <option value="Pending">Pending</option>
@@ -171,20 +174,21 @@ export default function TransactionClient({ session, transactions, suppliers, pr
           <option value="Rejected">Rejected</option>
           <option value="Shipped">Shipped</option>
         </select>
-        <div className="flex gap-2">
-          <select
-            name="sortBy"
-            defaultValue={filters.sortBy}
-            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
-          >
-            <option value="date_desc">Tanggal terbaru</option>
-            <option value="date_asc">Tanggal terlama</option>
-            <option value="created_desc">Baru dicatat</option>
-          </select>
-          <button type="submit" className="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-semibold">
-            Filter
-          </button>
-        </div>
+        <select
+          name="sortBy"
+          defaultValue={filters.sortBy}
+          className="flex-[1_1_9.5rem] min-w-0 px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+        >
+          <option value="date_desc">Tanggal terbaru</option>
+          <option value="date_asc">Tanggal terlama</option>
+          <option value="created_desc">Baru dicatat</option>
+        </select>
+        <button
+          type="submit"
+          className="flex-none px-5 py-2 bg-slate-800 text-white rounded-lg text-sm font-semibold whitespace-nowrap"
+        >
+          Filter
+        </button>
       </form>
 
       {(state?.error || state?.success || msg) && (
