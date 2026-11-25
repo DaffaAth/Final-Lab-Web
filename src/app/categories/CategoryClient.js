@@ -8,7 +8,7 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 function CategoryThumb({ url, name }) {
   const [failed, setFailed] = useState(false);
   const cleanUrl = typeof url === 'string' ? url.trim() : '';
-  const valid = /^https?:\/\//i.test(cleanUrl);
+  const valid = /^(https?:\/\/|\/api\/uploads\/)/i.test(cleanUrl);
 
   if (!valid || failed) {
     return (
@@ -108,13 +108,22 @@ export default function CategoryClient({ categories }) {
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">URL Gambar (Opsional)</label>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Gambar (Opsional)</label>
             <input
               name="image_url"
               defaultValue={editing?.image_url || ''}
-              placeholder="https://..."
+              placeholder="https://... (URL gambar dari web)"
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
             />
+            <input
+              name="image_file"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="mt-2 block w-full text-xs text-slate-600 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-slate-100 file:text-slate-700 file:font-semibold hover:file:bg-slate-200"
+            />
+            <p className="mt-1 text-[11px] text-slate-500">
+              Isi URL <em>atau</em> pilih file (PNG/JPG/WEBP, maks 5 MB). Bila keduanya diisi, file yang dipakai.
+            </p>
           </div>
           <div className="flex gap-2">
             <button
