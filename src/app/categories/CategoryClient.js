@@ -4,9 +4,46 @@ import { useActionState, useState } from 'react';
 import { saveCategoryAction, deleteCategoryAction } from '@/app/actions/master';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
+// Gambar kecil kategori. Bila URL kosong/tidak valid/gagal dimuat, tampil huruf awal nama kategori.
+function CategoryThumb({ url, name }) {
+  const [failed, setFailed] = useState(false);
+  const cleanUrl = typeof url === 'string' ? url.trim() : '';
+  const valid = /^https?:\/\//i.test(cleanUrl);
+
+  if (!valid || failed) {
+    return (
+      <div
+        aria-hidden="true"
+        className="h-16 w-16 shrink-0 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-sm font-bold text-slate-500"
+      >
+        {(name || '?').trim().charAt(0).toUpperCase()}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={cleanUrl}
+      alt={`Gambar kategori ${name}`}
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+      className="h-16 w-16 shrink-0 rounded-lg object-cover border border-slate-200"
+    />
+  );
+}
+
 export default function CategoryClient({ categories }) {
-  const [state, formAction, isPending] = useActionState(saveCategoryAction, null);
   const [editing, setEditing] = useState(null);
+
+  // Setelah simpan berhasil, kembali ke mode "Tambah" agar form tidak menyimpan data lama
+  async function handleSave(prevState, formData) {
+    const res = await saveCategoryAction(prevState, formData);
+    if (res?.success) setEditing(null);
+    return res;
+  }
+
+  const [state, formAction, isPending] = useActionState(handleSave, null);
   const [msg, setMsg] = useState('');
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -103,6 +140,7 @@ export default function CategoryClient({ categories }) {
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
               <tr>
+                <th className="p-3.5 w-24"></th>
                 <th className="p-3.5">Nama Kategori</th>
                 <th className="p-3.5">Deskripsi</th>
                 <th className="p-3.5">Jumlah Produk</th>
@@ -112,6 +150,9 @@ export default function CategoryClient({ categories }) {
             <tbody className="divide-y divide-slate-100">
               {categories.map((c) => (
                 <tr key={c.id}>
+                  <td className="p-3.5">
+                    <CategoryThumb url={c.image_url} name={c.name} />
+                  </td>
                   <td className="p-3.5 font-semibold text-slate-800">{c.name}</td>
                   <td className="p-3.5 text-slate-600">{c.description || '-'}</td>
                   <td className="p-3.5">{c.product_count} produk</td>
