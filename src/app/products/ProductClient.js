@@ -233,15 +233,25 @@ export default function ProductClient({ session, products, categories, filters, 
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">URL Gambar *</label>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Gambar Produk *</label>
+              {/* Cara 1: tempel URL gambar dari web */}
               <input
                 name="image_url"
                 defaultValue={editing?.image_url || ''}
-                placeholder="https://..."
-                type="url"
-                required
+                placeholder="https://... (URL gambar dari web)"
+                type="text"
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
               />
+              {/* Cara 2: upload gambar dari perangkat/aplikasi (diutamakan bila dipilih) */}
+              <input
+                name="image_file"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="mt-2 block w-full text-xs text-slate-600 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-slate-100 file:text-slate-700 file:font-semibold hover:file:bg-slate-200"
+              />
+              <p className="mt-1 text-[11px] text-slate-500">
+                Isi URL <em>atau</em> pilih file (PNG/JPG/WEBP, maks 5 MB). Bila keduanya diisi, file yang dipakai.
+              </p>
             </div>
 
             <div>
