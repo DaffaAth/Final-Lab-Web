@@ -3,6 +3,7 @@
 import pool from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { revalidatePath } from 'next/cache';
+import { saveUploadedImage, removeUploadedImage } from '@/lib/upload';
 
 function normalizeItems(items) {
   if (!Array.isArray(items) || items.length === 0) return null;
@@ -399,7 +400,7 @@ export async function requestRefundAction(orderId, notes) {
   return { success: 'Klaim refund berhasil diajukan kepada Supplier.' };
 }
 
-export async function submitArrivalProofAction(orderId, photoUrl) {
+export async function submitArrivalProofAction(orderId, formData) {
   const session = await getSession();
   if (!session || session.role !== 'supplier') {
     return { error: 'Hanya Supplier yang dapat menyerahkan bukti foto kedatangan.' };
@@ -407,22 +408,30 @@ export async function submitArrivalProofAction(orderId, photoUrl) {
   const id = Number(orderId);
   if (!Number.isInteger(id) || id <= 0) return { error: 'Restock Order tidak valid.' };
 
-  const url = typeof photoUrl === 'string' ? photoUrl.trim() : '';
-  if (!url) return { error: 'URL bukti foto wajib diisi.' };
+  // Bukti foto kedatangan hanya berupa file yang diunggah (bukan URL).
+  let photoPath = null;
   try {
-    const parsed = new URL(url);
-    if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('protocol');
-  } catch {
-    return { error: 'URL bukti foto tidak valid (harus diawali http:// atau https://).' };
+    photoPath = await saveUploadedImage(formData?.get?.('proof_file'));
+  } catch (error) {
+    return { error: error.message };
   }
+  if (!photoPath) return { error: 'File bukti foto wajib dipilih.' };
 
-  const result = await pool.query(
-    `UPDATE restock_orders
-     SET arrival_photo_url = $1
-     WHERE id = $2 AND supplier_id = $3 AND status = 'In Transit'`,
-    [url, id, session.id]
-  );
+  let result;
+  try {
+    result = await pool.query(
+      `UPDATE restock_orders
+       SET arrival_photo_url = $1
+       WHERE id = $2 AND supplier_id = $3 AND status = 'In Transit'`,
+      [photoPath, id, session.id]
+    );
+  } catch (error) {
+    await removeUploadedImage(photoPath);
+    console.error('Gagal menyimpan bukti foto:', error);
+    return { error: 'Gagal menyimpan bukti foto.' };
+  }
   if (result.rowCount === 0) {
+    await removeUploadedImage(photoPath);
     return { error: 'Bukti foto hanya dapat diserahkan untuk PO milik Anda yang berstatus In Transit.' };
   }
 
