@@ -3,6 +3,7 @@
 import { useActionState, useState } from 'react';
 import Link from 'next/link';
 import { saveProductAction, deleteProductAction } from '@/app/actions/master';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 function StockBadge({ status }) {
   const styles = {
@@ -24,6 +25,8 @@ export default function ProductClient({ session, products, categories, filters, 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [msg, setMsg] = useState('');
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   function openCreate() {
     setEditing(null);
@@ -35,14 +38,17 @@ export default function ProductClient({ session, products, categories, filters, 
     setShowForm(true);
   }
 
-  async function handleDelete(product) {
-    const warning =
-      product.current_stock > 0
-        ? `PERINGATAN: Produk "${product.name}" masih memiliki stok sebanyak ${product.current_stock} ${product.unit}! Tetap hapus produk ini?`
-        : `Hapus produk "${product.name}"?`;
-    if (!confirm(warning)) return;
-    const res = await deleteProductAction(product.id);
+  function handleDelete(product) {
+    setPendingDelete(product);
+  }
+
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    const res = await deleteProductAction(pendingDelete.id);
     setMsg(res.error || res.success);
+    setDeleting(false);
+    setPendingDelete(null);
   }
 
   return (
@@ -429,6 +435,21 @@ export default function ProductClient({ session, products, categories, filters, 
           </Link>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="Hapus produk?"
+        message={pendingDelete ? `Produk "${pendingDelete.name}" akan dihapus.` : ''}
+        note={
+          pendingDelete && pendingDelete.current_stock > 0
+            ? `PERINGATAN: produk ini masih memiliki stok ${pendingDelete.current_stock} ${pendingDelete.unit}.`
+            : ''
+        }
+        confirmLabel={pendingDelete && pendingDelete.current_stock > 0 ? 'Tetap Hapus' : 'Hapus'}
+        loading={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }
