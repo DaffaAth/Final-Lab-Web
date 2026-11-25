@@ -21,7 +21,8 @@ export default function RestockClient({ session, orders, suppliers, products, su
   const [msg, setMsg] = useState('');
   const [rejectId, setRejectId] = useState(null);
   const [rejectNote, setRejectNote] = useState('');
-  const [proofUrls, setProofUrls] = useState({});
+  const [proofFiles, setProofFiles] = useState({});
+  const [proofResetKey, setProofResetKey] = useState(0);
   const [msgError, setMsgError] = useState(false);
   const [reports, setReports] = useState({});
   const [returnId, setReturnId] = useState(null);
@@ -104,9 +105,19 @@ export default function RestockClient({ session, orders, suppliers, products, su
   }
 
   async function handleProofSubmit(orderId) {
-    const res = await submitArrivalProofAction(orderId, proofUrls[orderId] || '');
+    const file = proofFiles[orderId];
+    if (!file) {
+      showResult({ error: 'File bukti foto wajib dipilih.' });
+      return;
+    }
+    const formData = new FormData();
+    formData.append('proof_file', file);
+    const res = await submitArrivalProofAction(orderId, formData);
     showResult(res);
-    if (res.success) setProofUrls((prev) => ({ ...prev, [orderId]: '' }));
+    if (res.success) {
+      setProofFiles((prev) => ({ ...prev, [orderId]: null }));
+      setProofResetKey((k) => k + 1); // kosongkan tampilan input file
+    }
   }
 
   return (
@@ -389,15 +400,18 @@ export default function RestockClient({ session, orders, suppliers, products, su
               {isSupplier && po.status === 'In Transit' && (
                 <div className="pt-2 flex gap-2">
                   <input
-                    type="url"
-                    value={proofUrls[po.id] || ''}
-                    onChange={(e) => setProofUrls({ ...proofUrls, [po.id]: e.target.value })}
-                    placeholder="URL foto bukti kedatangan barang (https://...)"
-                    className="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-xs"
+                    key={`${po.id}-${proofResetKey}`}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={(e) =>
+                      setProofFiles({ ...proofFiles, [po.id]: e.target.files?.[0] || null })
+                    }
+                    className="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-xs file:mr-3 file:px-3 file:py-1 file:rounded-md file:border-0 file:bg-slate-100 file:text-slate-700 file:font-semibold"
                   />
                   <button
                     onClick={() => handleProofSubmit(po.id)}
-                    className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold"
+                    disabled={!proofFiles[po.id]}
+                    className="disabled:opacity-50 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold"
                   >
                     {po.arrival_photo_url ? 'Ganti Bukti Foto' : 'Serahkan Bukti Foto'}
                   </button>
