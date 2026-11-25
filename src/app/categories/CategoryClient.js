@@ -2,16 +2,22 @@
 
 import { useActionState, useState } from 'react';
 import { saveCategoryAction, deleteCategoryAction } from '@/app/actions/master';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 export default function CategoryClient({ categories }) {
   const [state, formAction, isPending] = useActionState(saveCategoryAction, null);
   const [editing, setEditing] = useState(null);
   const [msg, setMsg] = useState('');
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
-  async function handleDelete(id) {
-    if (!confirm('Hapus kategori ini?')) return;
-    const res = await deleteCategoryAction(id);
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    const res = await deleteCategoryAction(pendingDelete.id);
     setMsg(res.error || res.success);
+    setDeleting(false);
+    setPendingDelete(null);
   }
 
   return (
@@ -117,7 +123,7 @@ export default function CategoryClient({ categories }) {
                       Edit
                     </button>
                     <button
-                      onClick={() => handleDelete(c.id)}
+                      onClick={() => setPendingDelete(c)}
                       className="px-2.5 py-1 bg-red-100 text-red-700 rounded text-xs font-semibold"
                     >
                       Hapus
@@ -129,6 +135,22 @@ export default function CategoryClient({ categories }) {
           </table>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="Hapus kategori?"
+        message={pendingDelete ? `Kategori "${pendingDelete.name}" akan dihapus.` : ''}
+        note={
+          pendingDelete && pendingDelete.product_count > 0
+            ? `Kategori ini masih memiliki ${pendingDelete.product_count} produk sehingga tidak dapat dihapus.`
+            : ''
+        }
+        confirmLabel="Hapus"
+        loading={deleting}
+        confirmDisabled={Boolean(pendingDelete && pendingDelete.product_count > 0)}
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }
