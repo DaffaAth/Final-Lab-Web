@@ -1,4 +1,4 @@
-import { writeFile, mkdir } from 'fs/promises';
+import { writeFile, mkdir, unlink } from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 
@@ -64,4 +64,14 @@ export async function saveUploadedImage(file) {
   const name = `${crypto.randomUUID()}.${ext}`;
   await writeFile(path.join(UPLOAD_DIR, name), buffer);
   return `${UPLOAD_URL_PREFIX}${name}`;
+}
+
+// Hapus file hasil upload (best-effort, dipakai saat penyimpanan ke database gagal).
+export async function removeUploadedImage(urlPath) {
+  if (!isLocalUploadUrl(urlPath)) return;
+  try {
+    await unlink(path.join(UPLOAD_DIR, urlPath.slice(UPLOAD_URL_PREFIX.length)));
+  } catch {
+    // abaikan: file mungkin sudah tidak ada
+  }
 }
