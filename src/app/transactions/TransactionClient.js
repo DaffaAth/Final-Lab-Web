@@ -9,8 +9,11 @@ import {
   reviewTransactionAction,
   markTransactionShippedAction,
 } from '@/app/actions/workflow';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 export default function TransactionClient({ session, transactions, suppliers, products, receivedPOs, filters }) {
+  const [pendingDeleteId, setPendingDeleteId] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const isStaff = session.role === 'staff_gudang';
   const isManager = session.role === 'warehouse_manager';
 
@@ -86,10 +89,17 @@ export default function TransactionClient({ session, transactions, suppliers, pr
     if (res.success) setEditingTrx(null);
   }
 
-  async function handleDelete(id) {
-    if (!confirm('Hapus transaksi Pending ini?')) return;
-    const res = await deletePendingTransactionAction(id);
+  function handleDelete(id) {
+    setPendingDeleteId(id);
+  }
+
+  async function confirmDelete() {
+    if (!pendingDeleteId) return;
+    setDeleting(true);
+    const res = await deletePendingTransactionAction(pendingDeleteId);
     setMsg(res.error || res.success);
+    setDeleting(false);
+    setPendingDeleteId(null);
   }
 
   async function handleReview(id, decision, reason = '') {
@@ -588,6 +598,17 @@ export default function TransactionClient({ session, transactions, suppliers, pr
           ))
         )}
       </div>
+
+      <ConfirmDialog
+        open={Boolean(pendingDeleteId)}
+        title="Hapus transaksi?"
+        message="Transaksi Pending ini akan dihapus."
+        note="Tindakan ini tidak dapat dibatalkan."
+        confirmLabel="Hapus"
+        loading={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDeleteId(null)}
+      />
     </div>
   );
 }
